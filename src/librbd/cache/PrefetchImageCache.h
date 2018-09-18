@@ -70,6 +70,15 @@ private:
 
 };
 
+class CacheUpdate: public Context {
+  public:
+    CacheUpdate(CephContext* cct, Context* to_run);
+    void finish(int r) override;
+
+  private:
+    CephContext* cct;
+    Context* to_run;
+};
 	
 
 } // namespace cache

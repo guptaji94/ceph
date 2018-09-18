@@ -82,7 +82,9 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
   Extents correct_image_extents = unique_list_of_extents[0];
   ldout(cct, 20) << "fixed extent list: " << correct_image_extents << dendl;
 
-  auto aio_comp = io::AioCompletion::create_and_start(on_finish, &m_image_ctx,
+  Context* combined_on_finish = new CacheUpdate(cct, on_finish);
+
+  auto aio_comp = io::AioCompletion::create_and_start(combined_on_finish, &m_image_ctx,
                                                       io::AIO_TYPE_CACHE_READ);
   io::ImageCacheReadRequest<I> req(m_image_ctx, aio_comp, std::move(correct_image_extents),
                               io::ReadResult{bl}, fadvise_flags, {});
@@ -267,6 +269,19 @@ void PrefetchImageCache<I>::flush(Context *on_finish) {
   // internal flush -- nothing to writeback but make sure
   // in-flight IO is flushed
   aio_flush(on_finish);
+}
+
+CacheUpdate::CacheUpdate(CephContext* cct, Context* to_run) :
+  cct(cct), to_run(to_run)
+{}
+
+
+void CacheUpdate::finish(int r) {
+  ldout(cct, 20) << "Spencer's callback test" << dendl;
+
+  if (to_run) {
+    to_run->complete(r);
+  }
 }
 
 } // namespace cache
