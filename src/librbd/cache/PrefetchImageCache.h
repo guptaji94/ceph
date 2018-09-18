@@ -10,8 +10,10 @@
 #include "ImageWriteback.h"
 #include "librbd/io/AioCompletion.h"
 #include "librbd/io/ImageRequest.h"
+
 #include <deque>
 #include <unordered_map>
+#include <vector>
 
 namespace librbd {
 
@@ -44,6 +46,8 @@ public:
                              uint64_t *mismatch_offset,int fadvise_flags,
                              Context *on_finish) override;
 
+  void update_lru(std::vector<uint64_t> ids);
+
   /// internal state methods
   void init(Context *on_finish) override;
   void init_blocking() override;
@@ -70,12 +74,19 @@ private:
 
 };
 
+// CacheUpdate is a callback function (otherwise known as a Context in Ceph)
+// that tells the image cache to update its cache/LRU list, as well as run
+// the additional callback specified in its construction
+template <typename T>
 class CacheUpdate: public Context {
   public:
-    CacheUpdate(CephContext* cct, Context* to_run);
+    CacheUpdate(PrefetchImageCache<T>* cache, const std::vector<uint64_t>& elements,
+      CephContext* cct, Context* to_run);
     void finish(int r) override;
 
   private:
+    PrefetchImageCache<T>* cache;
+    std::vector<uint64_t> elements;
     CephContext* cct;
     Context* to_run;
 };

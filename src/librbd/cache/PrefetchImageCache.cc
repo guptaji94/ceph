@@ -82,7 +82,10 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
   Extents correct_image_extents = unique_list_of_extents[0];
   ldout(cct, 20) << "fixed extent list: " << correct_image_extents << dendl;
 
-  Context* combined_on_finish = new CacheUpdate(cct, on_finish);
+  // Get a list of all of the elements that will be added by the read request
+  // and create a callback
+  std::vector<uint64_t> elementList = {0};
+  Context* combined_on_finish = new CacheUpdate<I>(this, elementList, cct, on_finish);
 
   auto aio_comp = io::AioCompletion::create_and_start(combined_on_finish, &m_image_ctx,
                                                       io::AIO_TYPE_CACHE_READ);
@@ -271,13 +274,26 @@ void PrefetchImageCache<I>::flush(Context *on_finish) {
   aio_flush(on_finish);
 }
 
-CacheUpdate::CacheUpdate(CephContext* cct, Context* to_run) :
-  cct(cct), to_run(to_run)
+template <typename I>
+void PrefetchImageCache<I>::update_lru(std::vector<uint64_t> elements) {
+  // Actually update the LRU/cache list here
+  CephContext *cct = m_image_ctx.cct;
+  for (auto i : elements) {
+    ldout(cct, 20) << "Element " << i << " added to cache list" << dendl;
+  }
+}
+
+
+template <typename T>
+CacheUpdate<T>::CacheUpdate(PrefetchImageCache<T>* cache, const std::vector<uint64_t>& elements,
+    CephContext* cct, Context* to_run) :
+  cache(cache), elements(elements), cct(cct), to_run(to_run)
 {}
 
 
-void CacheUpdate::finish(int r) {
-  ldout(cct, 20) << "Spencer's callback test" << dendl;
+template <typename T>
+void CacheUpdate<T>::finish(int r) {
+  cache->update_lru(elements);
 
   if (to_run) {
     to_run->complete(r);
