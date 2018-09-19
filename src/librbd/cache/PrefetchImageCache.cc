@@ -5,6 +5,7 @@
 #include "include/buffer.h"
 #include "common/dout.h"
 #include "librbd/ImageCtx.h"
+#include "PredictionWorkQueue.h"
 
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
@@ -19,6 +20,20 @@ PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
   : m_image_ctx(image_ctx), m_image_writeback(image_ctx) {
   CephContext *cct = m_image_ctx.cct;
   ldout(cct, 10) << "lru_queue=" << lru_queue << ", cache_entries=" << cache_entries << dendl;
+
+  // Get the thread pool for this context
+  ContextWQ* op_work_queue;
+  ThreadPool* thread_pool;
+  m_image_ctx.get_thread_pool_instance(cct, &thread_pool, &op_work_queue);
+
+  prediction_wq = new PredictionWorkQueue("librdb::predition_work_queue",
+    cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
+    thread_pool, cct);
+}
+
+template <typename I>
+PrefetchImageCache<I>::~PrefetchImageCache() {
+  delete prediction_wq;
 }
 
 
@@ -84,8 +99,12 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
 
   // Get a list of all of the elements that will be added by the read request
   // and create a callback
-  std::vector<uint64_t> elementList = {0};
-  Context* combined_on_finish = new CacheUpdate<I>(this, elementList, cct, on_finish);
+  std::vector<uint64_t> element_list = {0};
+  Context* combined_on_finish = new CacheUpdate<I>(this, element_list, cct, on_finish);
+
+  for (auto i : element_list) {
+    prediction_wq->queue(i);
+  }
 
   auto aio_comp = io::AioCompletion::create_and_start(combined_on_finish, &m_image_ctx,
                                                       io::AIO_TYPE_CACHE_READ);
@@ -229,7 +248,6 @@ void PrefetchImageCache<I>::init_blocking() {
   lru_queue = new LRUQueue();
   cache_entries = new ImageCacheEntries();
   cache_entries->reserve(HASH_SIZE);
-  
 }
   
   
@@ -275,7 +293,7 @@ void PrefetchImageCache<I>::flush(Context *on_finish) {
 }
 
 template <typename I>
-void PrefetchImageCache<I>::update_lru(std::vector<uint64_t> elements) {
+void PrefetchImageCache<I>::update_cache(std::vector<uint64_t> elements) {
   // Actually update the LRU/cache list here
   CephContext *cct = m_image_ctx.cct;
   for (auto i : elements) {
@@ -293,7 +311,7 @@ CacheUpdate<T>::CacheUpdate(PrefetchImageCache<T>* cache, const std::vector<uint
 
 template <typename T>
 void CacheUpdate<T>::finish(int r) {
-  cache->update_lru(elements);
+  cache->update_cache(elements);
 
   if (to_run) {
     to_run->complete(r);

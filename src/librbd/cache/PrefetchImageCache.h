@@ -21,6 +21,8 @@ struct ImageCtx;
 
 namespace cache {
 
+class PredictionWorkQueue;
+
 /**
  * Example passthrough client-side, image extent cache
  * ---- modified, now using for prefetch cache
@@ -29,6 +31,7 @@ template <typename ImageCtxT = librbd::ImageCtx>
 class PrefetchImageCache : public ImageCache {
 public:
   explicit PrefetchImageCache(ImageCtx &image_ctx);
+  ~PrefetchImageCache();
 
   /// client AIO methods
   void aio_read(Extents&& image_extents, ceph::bufferlist *bl,
@@ -46,7 +49,7 @@ public:
                              uint64_t *mismatch_offset,int fadvise_flags,
                              Context *on_finish) override;
 
-  void update_lru(std::vector<uint64_t> ids);
+  void update_cache(std::vector<uint64_t> ids);
 
   /// internal state methods
   void init(Context *on_finish) override;
@@ -71,6 +74,9 @@ private:
   LRUQueue *lru_queue;
 
   Extents extent_to_chunks(std::pair<uint64_t, uint64_t> image_extents); 
+
+  // Work queue to handle Belief value calculations
+  PredictionWorkQueue* prediction_wq;
 
 };
 
