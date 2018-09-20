@@ -75,14 +75,14 @@ struct ReadResult::AssembleResultVisitor : public boost::static_visitor<void> {
     bufferlist.bl->clear();
     destriper.assemble_result(cct, *bufferlist.bl, true);
 
-    if (src) {
+    if (src != NULL) {
       ldout(cct, 20) << "copying " << src->length() << " "
                      << "bytes from the cache to bl "
                      << reinterpret_cast<void*>(bufferlist.bl) << dendl;
 
       // Deep copy
-      auto appender = bufferlist.bl->get_contiguous_appender(src->length(), true);
-      appender.append(*src);
+      /*auto appender = bufferlist.bl->get_contiguous_appender(src->length(), true);
+      appender.append(*src);*/
     }
 
     ldout(cct, 20) << "moved resulting " << bufferlist.bl->length() << " "

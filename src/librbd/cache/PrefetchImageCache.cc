@@ -111,13 +111,29 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
   // in the cache
   ceph::bufferlist cached_data;
 
-  auto aio_comp = io::AioCompletion::create_and_start(combined_on_finish, &m_image_ctx,
-                                                      io::AIO_TYPE_CACHE_READ);
-  io::ImageCacheReadRequest<I> req(m_image_ctx, aio_comp, std::move(correct_image_extents),
-                              io::ReadResult{bl, &cached_data}, fadvise_flags, {});
-  req.set_bypass_image_cache();
-  req.send();
+  bool already_in_cache = false;
 
+  // If all of the chunks aren't in the cache, we need to make an asynchronous request
+  if (!already_in_cache) {
+    auto aio_comp = io::AioCompletion::create_and_start(combined_on_finish, &m_image_ctx,
+                                                          io::AIO_TYPE_CACHE_READ);
+    io::ImageCacheReadRequest<I> req(m_image_ctx, aio_comp, std::move(correct_image_extents),
+                                io::ReadResult{bl}, fadvise_flags, {});
+                                
+    req.set_bypass_image_cache();
+    req.send();
+  } else {
+    // Otherwise synchronously copy from our cache chunks to the result buffer
+
+    // NOTE: this isn't done yet!
+    bufferlist* cache_chunks = nullptr;
+    uint64_t total_request_size = 0;
+    auto appender = bl->get_contiguous_appender(total_request_size, true);
+    appender.append(*cache_chunks);
+
+    // NOTE: not sure what parameter this should take
+    on_finish->complete(0);
+  }
 }
 
 template <typename I>
