@@ -256,6 +256,8 @@ ImageCacheReadRequest<I>::ImageCacheReadRequest(I &image_ctx, AioCompletion *aio
   : ImageRequest<I>(image_ctx, aio_comp, std::move(image_extents), "cache_read",
 		    parent_trace),
     m_op_flags(op_flags) {
+  ldout(image_ctx.cct, 20) << "moving_read_result" << dendl;
+
   aio_comp->read_result = std::move(read_result);
 }
 
@@ -263,6 +265,7 @@ ImageCacheReadRequest<I>::ImageCacheReadRequest(I &image_ctx, AioCompletion *aio
 
 template <typename I>
 int ImageCacheReadRequest<I>::clip_request() {
+
   int r = ImageRequest<I>::clip_request();
   if (r < 0) {
     return r;

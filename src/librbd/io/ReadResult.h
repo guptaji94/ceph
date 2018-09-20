@@ -54,7 +54,7 @@ public:
   ReadResult();
   ReadResult(char *buf, size_t buf_len);
   ReadResult(const struct iovec *iov, int iov_count);
-  ReadResult(ceph::bufferlist *bl);
+  ReadResult(ceph::bufferlist *bl, ceph::bufferlist* src = NULL);
 
   void set_clip_length(size_t length);
   void assemble_result(CephContext *cct);
@@ -97,6 +97,8 @@ private:
   Buffer m_buffer;
   Striper::StripedReadResult m_destriper;
 
+  // Hacky injection of custom bufferlist to be copied into the result
+  ceph::bufferlist* m_src_buffer = NULL;
 };
 
 } // namespace io

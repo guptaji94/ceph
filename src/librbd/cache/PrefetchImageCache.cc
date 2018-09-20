@@ -102,14 +102,19 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
   std::vector<uint64_t> element_list = {0};
   Context* combined_on_finish = new CacheUpdate<I>(this, element_list, cct, on_finish);
 
+  // Dispatch a job to workqueue to find update predictions based on the loaded elements
   for (auto i : element_list) {
     prediction_wq->queue(i);
   }
 
+  // This bufferlist should hold the data that the user requested which was already
+  // in the cache
+  ceph::bufferlist cached_data;
+
   auto aio_comp = io::AioCompletion::create_and_start(combined_on_finish, &m_image_ctx,
                                                       io::AIO_TYPE_CACHE_READ);
   io::ImageCacheReadRequest<I> req(m_image_ctx, aio_comp, std::move(correct_image_extents),
-                              io::ReadResult{bl}, fadvise_flags, {});
+                              io::ReadResult{bl, &cached_data}, fadvise_flags, {});
   req.set_bypass_image_cache();
   req.send();
 

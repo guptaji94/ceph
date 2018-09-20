@@ -35,9 +35,11 @@ struct ReadResult::SetClipLengthVisitor : public boost::static_visitor<void> {
 struct ReadResult::AssembleResultVisitor : public boost::static_visitor<void> {
   CephContext *cct;
   Striper::StripedReadResult &destriper;
+  ceph::bufferlist *src;
 
-  AssembleResultVisitor(CephContext *cct, Striper::StripedReadResult &destriper)
-    : cct(cct), destriper(destriper) {
+  AssembleResultVisitor(CephContext *cct, Striper::StripedReadResult &destriper,
+    ceph::bufferlist *src)
+    : cct(cct), destriper(destriper), src(src) {
   }
 
   void operator()(Empty &empty) const {
@@ -72,6 +74,16 @@ struct ReadResult::AssembleResultVisitor : public boost::static_visitor<void> {
   void operator()(Bufferlist &bufferlist) const {
     bufferlist.bl->clear();
     destriper.assemble_result(cct, *bufferlist.bl, true);
+
+    if (src) {
+      ldout(cct, 20) << "copying " << src->length() << " "
+                     << "bytes from the cache to bl "
+                     << reinterpret_cast<void*>(bufferlist.bl) << dendl;
+
+      // Deep copy
+      auto appender = bufferlist.bl->get_contiguous_appender(src->length(), true);
+      appender.append(*src);
+    }
 
     ldout(cct, 20) << "moved resulting " << bufferlist.bl->length() << " "
                    << "bytes to bl " << reinterpret_cast<void*>(bufferlist.bl)
@@ -164,8 +176,8 @@ ReadResult::ReadResult(const struct iovec *iov, int iov_count)
   : m_buffer(Vector(iov, iov_count)) {
 }
 
-ReadResult::ReadResult(ceph::bufferlist *bl)
-  : m_buffer(Bufferlist(bl)) {
+ReadResult::ReadResult(ceph::bufferlist *bl, ceph::bufferlist *src)
+  : m_buffer(Bufferlist(bl)), m_src_buffer(src) {
 }
 
 void ReadResult::set_clip_length(size_t length) {
@@ -173,7 +185,7 @@ void ReadResult::set_clip_length(size_t length) {
 }
 
 void ReadResult::assemble_result(CephContext *cct) {
-  boost::apply_visitor(AssembleResultVisitor(cct, m_destriper), m_buffer);
+  boost::apply_visitor(AssembleResultVisitor(cct, m_destriper, m_src_buffer), m_buffer);
 }
 
 } // namespace io
