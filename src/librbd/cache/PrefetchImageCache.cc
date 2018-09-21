@@ -17,9 +17,8 @@ namespace cache {
 
 template <typename I>
 PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
-  : m_image_ctx(image_ctx), m_image_writeback(image_ctx) {
+  : m_image_ctx(image_ctx), m_image_writeback(image_ctx), real_cache(m_image_ctx.cct) {
   CephContext *cct = m_image_ctx.cct;
-  ldout(cct, 10) << "lru_queue=" << lru_queue << ", cache_entries=" << cache_entries << dendl;
 
   // Get the thread pool for this context
   ContextWQ* op_work_queue;
@@ -91,45 +90,73 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
     unique_list_of_extents.push_back(fogRow);
   }
 
-	if(unique_list_of_extents[0].size() > 1) {
-		unique_list_of_extents[0].pop_back();
-	}
+  if(unique_list_of_extents[0].size() > 1) {
+    unique_list_of_extents[0].pop_back();
+  }
   Extents correct_image_extents = unique_list_of_extents[0];
   ldout(cct, 20) << "fixed extent list: " << correct_image_extents << dendl;
-
-  // Get a list of all of the elements that will be added by the read request
-  // and create a callback
-  std::vector<uint64_t> element_list = {0};
-  Context* combined_on_finish = new CacheUpdate<I>(this, element_list, cct, on_finish);
-
-  // Dispatch a job to workqueue to find update predictions based on the loaded elements
-  for (auto i : element_list) {
-    prediction_wq->queue(i);
-  }
 
   // This bufferlist should hold the data that the user requested which was already
   // in the cache
   ceph::bufferlist cached_data;
 
-  bool already_in_cache = false;
+  // Figure out what isn't in the cache!
+  std::vector<ElementID> uncached_chunk_ids;
+  std::vector<Extent> uncached_chunk_extents;
 
-  // If all of the chunks aren't in the cache, we need to make an asynchronous request
-  if (!already_in_cache) {
+  uint64_t num_cached_chunks = 0;
+
+  for (auto i : correct_image_extents) {
+    ElementID chunk_id = RealCache::extent_to_unique_id(i.first);
+
+    // Add each chunk ID to the prediction work queue
+    prediction_wq->queue(chunk_id);
+
+    // And try to get it from the cache
+    bufferptr cache_chunk_buffer = real_cache.get(chunk_id);
+
+    // Uncached chunks will have to be requested from the cluster
+    if (!cache_chunk_buffer.is_zero()) {
+	uncached_chunk_ids.push_back(chunk_id);
+	uncached_chunk_extents.push_back(i);
+    } else {
+    // Cached chunks will get copied into the result buffer later
+	cached_data.push_back(cache_chunk_buffer);
+	num_cached_chunks ++;
+    }
+  }
+
+
+  ldout(cct, 20) << "Number of requested chunks to be fetched= "
+		 << uncached_chunk_ids.size()
+		 << "Number of requested chunks in the cache= "
+		 << num_cached_chunks << dendl;
+
+  // If any of the chunks aren't in the cache, we need to make an asynchronous request
+  // from the cluster
+  if (!uncached_chunk_ids.empty()) {
+    // Create a callback to notify the LRU list/cache the IDs of the chunks we added
+    Context* combined_on_finish = new CacheUpdate<I>(this, uncached_chunk_ids, cct, on_finish);
+
+    // If we have cached data that we need to copy into the result buffer, make sure
+    // it's added to the callback
+    ceph::bufferlist* copy_src = nullptr;
+    if (num_cached_chunks > 0) {
+	copy_src = &cached_data;
+    }
+
     auto aio_comp = io::AioCompletion::create_and_start(combined_on_finish, &m_image_ctx,
                                                           io::AIO_TYPE_CACHE_READ);
-    io::ImageCacheReadRequest<I> req(m_image_ctx, aio_comp, std::move(correct_image_extents),
-                                io::ReadResult{bl}, fadvise_flags, {});
+    io::ImageCacheReadRequest<I> req(m_image_ctx, aio_comp, std::move(uncached_chunk_extents),
+                                io::ReadResult{bl, copy_src}, fadvise_flags, {});
                                 
     req.set_bypass_image_cache();
     req.send();
   } else {
     // Otherwise synchronously copy from our cache chunks to the result buffer
-
-    // NOTE: this isn't done yet!
-    bufferlist* cache_chunks = nullptr;
     uint64_t total_request_size = 0;
     auto appender = bl->get_contiguous_appender(total_request_size, true);
-    appender.append(*cache_chunks);
+    appender.append(cached_data);
 
     // NOTE: not sure what parameter this should take
     on_finish->complete(0);
@@ -243,12 +270,6 @@ void PrefetchImageCache<I>::init(Context *on_finish) {
   CephContext *cct = m_image_ctx.cct;    //for logging purposes
   ldout(cct, 20) << dendl;
 
-  //begin initializing LRU and hash table.
-  lru_queue = new LRUQueue();
-  cache_entries = new ImageCacheEntries();
-  cache_entries->reserve(HASH_SIZE);
-  
-
 
   on_finish->complete(0);
 
@@ -264,11 +285,6 @@ template <typename I>
 void PrefetchImageCache<I>::init_blocking() {
   CephContext *cct = m_image_ctx.cct;    //for logging purposes
   ldout(cct, 20) << "BLOCKING init without callback, being called from image cache constructor" << dendl;
-
-  //begin initializing LRU and hash table.
-  lru_queue = new LRUQueue();
-  cache_entries = new ImageCacheEntries();
-  cache_entries->reserve(HASH_SIZE);
 }
   
   
@@ -276,22 +292,7 @@ template <typename I>
 void PrefetchImageCache<I>::shut_down(Context *on_finish) {
   CephContext *cct = m_image_ctx.cct;
   ldout(cct, 20) << dendl;
-
-  //erases the content of the LRU queue
-  //since the content are ints, there's no need for deallocation
-  //by using the erase-remove idiom
-  //lru_queue -> erase(std::remove_if(lru_queue->begin(), lru_queue->end(), true), lru_queue->end());
-
-  //calls the destructor which therefore destroys the object, not just only the reference to the object. 
-  lru_queue -> clear();
-
-  
-  // erases the content of the hash table
-
-  // the hash table container, along with the objects in it
-  delete cache_entries;
-            
-  }
+}
   
   
 template <typename I>

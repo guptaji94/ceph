@@ -11,22 +11,31 @@
 
 namespace librbd{
   namespace cache{
+    using ElementID = uint64_t;
+    using Extent = std::pair<uint64_t, uint64_t>;
+
+    // map for cache entries
+    using ImageCacheEntries = std::map<ElementID, bufferptr>;
+ 
+    // list for handling LRU eviction 
+    using LRUList = std::list<ElementID>;
+
     class RealCache{
       public:
-        static RealCache *Instance(CephContext *m_cct);
-        void insert(CephContext* m_cct, uint64_t image_extents_addr, bufferptr bl);
-  	bufferptr get(CephContext* m_cct, uint64_t image_extent_addr);
+        RealCache(CephContext *m_cct);
+
+        void insert(uint64_t image_extents_addr, bufferptr bl);
+  	bufferptr get(uint64_t image_extent_addr);
+
+	static ElementID extent_to_unique_id(uint64_t extent_offset);
+	static ElementID extent_to_unique_id(Extent extent);
+	static Extent id_to_extent(ElementID id);
 
       private:
-        RealCache(){};
-        ~RealCache();
         CephContext *m_cct;
-        typedef std::unordered_map<uint64_t, bufferptr> ImageCacheEntries;
-        static RealCache *m_pInstance;
-        ImageCacheEntries *cache_entries;
-        typedef std::list<uint64_t> LRUList;
-        LRUList *lru_list;
-        void init(CephContext* m_cct);
+        ImageCacheEntries cache_entries;
+        LRUList lru_list;
+
         void updateLRUList(CephContext* m_cct, uint64_t cacheKey);
         void evictCache(CephContext* m_cct, uint64_t cacheKey);
     };

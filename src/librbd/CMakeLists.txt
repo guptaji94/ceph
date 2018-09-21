@@ -34,6 +34,7 @@ set(librbd_internal_srcs
   cache/ObjectCacherObjectDispatch.cc
   cache/PrefetchImageCache.cc
   cache/PredictionWorkQueue.cc
+  cache/RealCache.cc
   deep_copy/ImageCopyRequest.cc
   deep_copy/MetadataCopyRequest.cc
   deep_copy/ObjectCopyRequest.cc

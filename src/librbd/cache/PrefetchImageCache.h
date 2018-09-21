@@ -8,6 +8,7 @@
 
 #include "ImageCache.h"
 #include "ImageWriteback.h"
+#include "RealCache.h"
 #include "librbd/io/AioCompletion.h"
 #include "librbd/io/ImageRequest.h"
 
@@ -66,18 +67,12 @@ private:
   ImageCtxT &m_image_ctx;
   ImageWriteback<ImageCtxT> m_image_writeback;
 
-  // map for cache entries
-  typedef std::unordered_map<uint64_t, ceph::bufferlist *> ImageCacheEntries;
-  ImageCacheEntries *cache_entries;
-
-  // queue for handling LRU eviction 
-  typedef std::deque<uint64_t> LRUQueue;
-  LRUQueue *lru_queue;
-
   Extents extent_to_chunks(std::pair<uint64_t, uint64_t> image_extents); 
 
   // Work queue to handle Belief value calculations
   PredictionWorkQueue* prediction_wq;
+
+  RealCache real_cache;
 
 };
 
