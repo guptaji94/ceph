@@ -28,7 +28,7 @@ PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
 
   prediction_wq = new PredictionWorkQueue("librdb::predition_work_queue",
     cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
-    thread_pool, cct);
+    thread_pool, std::bind(&PrefetchImageCache::prefetch_chunk, this, std::placeholders::_1), cct);
 }
 
 template <typename I>
@@ -320,6 +320,21 @@ void PrefetchImageCache<I>::update_cache(std::vector<uint64_t> elements) {
   for (auto i : elements) {
     ldout(cct, 20) << "Element " << i << " added to cache list" << dendl;
   }
+}
+
+template <typename I>
+void PrefetchImageCache<I>::prefetch_chunk(uint64_t id) {
+  bufferlist* cache_storage_location = nullptr;
+
+  Extents extents {std::make_pair((id + 1) * CACHE_CHUNK_SIZE, CACHE_CHUNK_SIZE)};
+  Context* on_completion = new CacheUpdate<I>(this, std::vector<uint64_t>{id}, m_image_ctx.cct);
+  auto aio_comp = io::AioCompletion::create_and_start(on_completion, &m_image_ctx,
+                                                        io::AIO_TYPE_CACHE_READ);
+  io::ImageCacheReadRequest<I> req(m_image_ctx, aio_comp, std::move(extents),
+                              io::ReadResult{cache_storage_location}, 0, {});
+                              
+  req.set_bypass_image_cache();
+  req.send();
 }
 
 

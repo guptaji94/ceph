@@ -50,6 +50,7 @@ public:
                              Context *on_finish) override;
 
   void update_cache(std::vector<uint64_t> ids);
+  void prefetch_chunk(uint64_t id);
 
   /// internal state methods
   void init(Context *on_finish) override;
@@ -87,7 +88,7 @@ template <typename T>
 class CacheUpdate: public Context {
   public:
     CacheUpdate(PrefetchImageCache<T>* cache, const std::vector<uint64_t>& elements,
-      CephContext* cct, Context* to_run);
+      CephContext* cct, Context* to_run = nullptr);
     void finish(int r) override;
 
   private:
