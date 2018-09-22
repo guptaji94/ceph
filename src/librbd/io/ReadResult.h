@@ -33,8 +33,10 @@ public:
     C_ImageReadRequest(AioCompletion *aio_completion,
                        const Extents image_extents);
 
-    void finish(int r) override;
+    virtual void finish(int r) override;
   };
+
+  Striper::StripedReadResult m_destriper;
 
   struct C_ObjectReadRequest : public Context {
     AioCompletion *aio_completion;
@@ -95,7 +97,6 @@ private:
   struct AssembleResultVisitor;
 
   Buffer m_buffer;
-  Striper::StripedReadResult m_destriper;
 
   // Hacky injection of custom bufferlist to be copied into the result
   ceph::bufferlist* m_src_buffer = NULL;

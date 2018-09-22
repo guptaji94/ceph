@@ -60,6 +60,10 @@ public:
 
   void invalidate(Context *on_finish) override;
   void flush(Context *on_finish) override;
+
+  void aio_cache_returned_data( // const Extents& image_extents,
+    ceph::bufferlist *bl,
+    std::vector<cache::ElementID> chunk_ids);
   
   
 
@@ -83,13 +87,14 @@ template <typename T>
 class CacheUpdate: public Context {
   public:
     CacheUpdate(PrefetchImageCache<T>* cache, const std::vector<uint64_t>& elements,
-      CephContext* cct, Context* to_run = nullptr);
+    CephContext* cct, ceph::bufferlist* bl, Context* to_run = nullptr);
     void finish(int r) override;
 
   private:
     PrefetchImageCache<T>* cache;
     std::vector<uint64_t> elements;
     CephContext* cct;
+    ceph::bufferlist* bl;
     Context* to_run;
 };
 	

@@ -35,6 +35,7 @@ namespace io {
  * within the caller's thread of execution (instead via a librados
  * context or via a thread pool context for cache read hits).
  */
+
 struct AioCompletion {
   typedef enum {
     AIO_STATE_PENDING = 0,

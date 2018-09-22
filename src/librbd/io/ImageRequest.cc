@@ -8,6 +8,7 @@
 #include "librbd/Types.h"
 #include "librbd/Utils.h"
 #include "librbd/cache/ImageCache.h"
+#include "librbd/io/CacheReadResult.h"
 #include "librbd/io/AioCompletion.h"
 #include "librbd/io/ObjectDispatchInterface.h"
 #include "librbd/io/ObjectDispatchSpec.h"
@@ -251,11 +252,11 @@ void ImageReadRequest<I>::send_image_cache_request() {
 template <typename I>
 ImageCacheReadRequest<I>::ImageCacheReadRequest(I &image_ctx, AioCompletion *aio_comp,
                                       Extents &&image_extents,
+                                      std::vector<uint64_t> chunk_ids,
                                       ReadResult &&read_result, int op_flags,
 				      const ZTracer::Trace &parent_trace)
   : ImageRequest<I>(image_ctx, aio_comp, std::move(image_extents), "cache_read",
-		    parent_trace),
-    m_op_flags(op_flags) {
+		    parent_trace), chunk_ids(chunk_ids), m_op_flags(op_flags) {
   ldout(image_ctx.cct, 20) << "moving_read_result" << dendl;
 
   aio_comp->read_result = std::move(read_result);
@@ -357,8 +358,8 @@ void ImageCacheReadRequest<I>::send_image_cache_request() {
   AioCompletion *aio_comp = this->m_aio_comp;
   aio_comp->set_request_count(1);
 
-  auto *req_comp = new io::ReadResult::C_ImageReadRequest(
-    aio_comp, this->m_image_extents);
+  auto *req_comp = new io::CacheReadResult::C_ImageCacheReadRequest(
+    aio_comp, this->m_image_extents, chunk_ids);
   image_ctx.image_cache->aio_read(std::move(this->m_image_extents),
                                   &req_comp->bl, m_op_flags,
                                   req_comp);

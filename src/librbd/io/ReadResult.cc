@@ -81,8 +81,8 @@ struct ReadResult::AssembleResultVisitor : public boost::static_visitor<void> {
                      << reinterpret_cast<void*>(bufferlist.bl) << dendl;
 
       // Deep copy
-      /*auto appender = bufferlist.bl->get_contiguous_appender(src->length(), true);
-      appender.append(*src);*/
+      auto appender = bufferlist.bl->get_contiguous_appender(src->length(), true);
+      appender.append(*src);
     }
 
     ldout(cct, 20) << "moved resulting " << bufferlist.bl->length() << " "

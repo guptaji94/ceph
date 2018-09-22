@@ -123,7 +123,8 @@ public:
   using typename ImageRequest<ImageCtxT>::Extents;
 
   ImageCacheReadRequest(ImageCtxT &image_ctx, AioCompletion *aio_comp,
-                   Extents &&image_extents, ReadResult &&read_result,
+                   Extents &&image_extents, std::vector<uint64_t> chunk_ids,
+                   ReadResult &&read_result,
                    int op_flags, const ZTracer::Trace &parent_trace);
 
 protected:
@@ -141,6 +142,7 @@ protected:
 
 private:
   int m_op_flags;
+  std::vector<uint64_t> chunk_ids;
 };
 
 

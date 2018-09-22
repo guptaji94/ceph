@@ -17,8 +17,10 @@ namespace librbd {
     void RealCache::insert(uint64_t image_extents_addr, bufferptr bl) {
   	ldout(m_cct, 20) << "inserting the image extent :: " << image_extents_addr << " bufferlist :: " << bl << " to cache " << dendl;
 
+				bufferptr b_copy(buffer::copy(bl.raw_c_str(), bl.length()));
+
         updateLRUList(m_cct, image_extents_addr);
-        cache_entries.insert_or_assign(image_extents_addr, bl);
+        cache_entries.insert_or_assign(image_extents_addr, b_copy);
 	
   	ldout(m_cct, 20) << "cache size after insert :: " << cache_entries.size() << dendl;
     }
@@ -30,7 +32,6 @@ namespace librbd {
   	auto cache_entry = cache_entries.find(image_extent_addr);
   	if(cache_entry == cache_entries.end()){
   		ldout(m_cct, 20) << "No match in cache for :: " << image_extent_addr << dendl;
-		bl.zero();
   		return bl;
   	} else {
   		bl = cache_entry->second;

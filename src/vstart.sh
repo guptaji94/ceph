@@ -109,7 +109,7 @@ else
     OSD_POOL_DEFAULT_SIZE=$CEPH_NUM_OSD
 fi
 
-extra_conf=""
+extra_conf="debug rbd = 20"
 new=0
 standby=0
 debug=0
