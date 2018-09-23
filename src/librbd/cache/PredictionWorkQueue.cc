@@ -1,5 +1,7 @@
 #include "PredictionWorkQueue.h"
 
+#include <limits>
+
 #include "PrefetchImageCache.h"
 
 #define dout_subsys ceph_subsys_rbd
@@ -13,19 +15,26 @@ namespace cache {
 
 PredictionWorkQueue::PredictionWorkQueue(std::string n, time_t ti,
     ThreadPool* p, std::function<void(uint64_t)> prefetch, CephContext* cct) :
-        WorkQueueVal<uint64_t>(n, ti, 0, p), prefetch(prefetch), cct(cct)
+        WorkQueueVal<uint64_t>(n, ti, 0, p), prefetch(prefetch), cct(cct),
+        virt_cache(std::numeric_limits<uint64_t>::max()), lock("PredictionWorkQueue::lock",
+            true, false)
 {
 }
 
 void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
-    // Do some calculations!
     ldout(cct, 20) << "Adding element " << id << " to BeliefCache history" << dendl;
 
-    prefetch(id + 1);
+    lock.Lock();
 
-    /*for (auto i : prefetch_list) {
-        real_cache.prefetch_chunk(i);
-    }*/
+    virt_cache.updateHistory(id);
+    auto& prefetch_list = virt_cache.getPrefetchList();
+
+    for (auto i : prefetch_list) {
+        prefetch(i.id);
+    }
+
+    prefetch_list.clear();
+    lock.Unlock();
 }
 
 bool PredictionWorkQueue::_empty() {
