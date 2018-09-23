@@ -165,8 +165,10 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
     uint64_t total_request_size = cached_data.length();
     
     // NOTE: This appender isn't actually copying the data - fix it!
-    auto appender = bl->get_contiguous_appender(total_request_size, true);
-    appender.append(cached_data);
+    {
+      auto appender = bl->get_contiguous_appender(total_request_size, true);
+      appender.append(cached_data);
+    }
 
     ldout(cct, 20) << "bl.length after copying from cache " << bl->length() << dendl;
 
