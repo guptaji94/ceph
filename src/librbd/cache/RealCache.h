@@ -24,7 +24,7 @@ namespace librbd{
       public:
         RealCache(CephContext *m_cct);
 
-        void insert(uint64_t image_extents_addr, bufferptr bl);
+        void insert(uint64_t image_extents_addr, bufferptr bl, bool copy_result);
   	bufferptr get(uint64_t image_extent_addr);
 
 	static ElementID extent_to_unique_id(uint64_t extent_offset);
@@ -35,6 +35,8 @@ namespace librbd{
         CephContext *m_cct;
         ImageCacheEntries cache_entries;
         LRUList lru_list;
+
+        mutable Mutex lock;
 
         void updateLRUList(CephContext* m_cct, uint64_t cacheKey);
         void evictCache(CephContext* m_cct, uint64_t cacheKey);

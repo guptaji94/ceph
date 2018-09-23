@@ -13,12 +13,16 @@
 #define dout_prefix *_dout << "librbd::PrefetchImageCache: " << this << " " \
                            <<  __func__ << ": "
 
+#define writes_until_cache 400
+
 namespace librbd {
 namespace cache {
 
 template <typename I>
 PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
-  : m_image_ctx(image_ctx), m_image_writeback(image_ctx), real_cache(m_image_ctx.cct) {
+  : m_image_ctx(image_ctx), m_image_writeback(image_ctx) 
+   {
+  real_cache = new RealCache(m_image_ctx.cct);
   CephContext *cct = m_image_ctx.cct;
 
   // Get the thread pool for this context
@@ -34,6 +38,7 @@ PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
 template <typename I>
 PrefetchImageCache<I>::~PrefetchImageCache() {
   delete prediction_wq;
+  delete real_cache;
 }
 
 
@@ -61,123 +66,145 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
   ldout(cct, 20) << "image_extents=" << image_extents << ", "
                  << "on_finish=" << on_finish << dendl;
 
-  std::vector<Extents> unique_list_of_extents;
-  std::set<uint64_t> set_tracker;
+  read_count++;
 
-  //get the extents, then call the chunking function
-  std::vector<Extents> temp;
-  for(auto &it : image_extents) {
-    temp.push_back(extent_to_chunks(it));
-  }
+  // Wait until caching flag is set, so that we can write test data without
+  // interrupting process by caching
+  if (caching) {
+    std::vector<Extents> unique_list_of_extents;
+    std::set<uint64_t> set_tracker;
 
-  ldout(cct, 25) << "\"temp\" after all extents chunked: "
-     << temp << dendl;
+    //get the extents, then call the chunking function
+    std::vector<Extents> temp;
+    for(auto &it : image_extents) {
+      temp.push_back(extent_to_chunks(it));
+    }
 
-  //loops through the row
-  for (const auto &row : temp) {
+    ldout(cct, 25) << "\"temp\" after all extents chunked: "
+      << temp << dendl;
 
-    //temp list of extent
-    Extents fogRow;
+    //loops through the row
+    for (const auto &row : temp) {
 
-    //loops through the column
-    for (const auto &s : row) {
-      //inserts into a set and checks to see if the element is already inserted
-      auto ret = set_tracker.insert(s.first);
-      //if inserted, insert into the vector of list
-      if (ret.second==true) {
-        fogRow.push_back(s);
+      //temp list of extent
+      Extents fogRow;
+
+      //loops through the column
+      for (const auto &s : row) {
+        //inserts into a set and checks to see if the element is already inserted
+        auto ret = set_tracker.insert(s.first);
+        //if inserted, insert into the vector of list
+        if (ret.second==true) {
+          fogRow.push_back(s);
+        }
+      }
+      unique_list_of_extents.push_back(fogRow);
+    }
+
+    if(unique_list_of_extents[0].size() > 1) {
+      unique_list_of_extents[0].pop_back();
+    }
+    Extents correct_image_extents = unique_list_of_extents[0];
+    ldout(cct, 20) << "fixed extent list: " << correct_image_extents << dendl;
+
+    // This bufferlist should hold the data that the user requested which was already
+    // in the cache
+    ceph::bufferlist cached_data;
+
+    // Figure out what isn't in the cache!
+    std::vector<ElementID> uncached_chunk_ids;
+    std::vector<Extent> uncached_chunk_extents;
+
+    uint64_t num_cached_chunks = 0;
+
+    for (auto i : correct_image_extents) {
+      ElementID chunk_id = RealCache::extent_to_unique_id(i.first);
+
+      // Add each chunk ID to the prediction work queue
+      prediction_wq->queue(chunk_id);
+
+      // And try to get it from the cache
+      bufferptr cache_chunk_buffer = real_cache->get(chunk_id);
+
+      if (cache_chunk_buffer.length() > 0) {
+        // Cached chunks will get copied into the result buffer later
+        cached_data.push_back(cache_chunk_buffer);
+        num_cached_chunks ++;
+      } else {
+        // Uncached chunks will have to be requested from the cluster
+        uncached_chunk_ids.push_back(chunk_id);
+        uncached_chunk_extents.push_back(i);
       }
     }
-    unique_list_of_extents.push_back(fogRow);
-  }
 
-  if(unique_list_of_extents[0].size() > 1) {
-    unique_list_of_extents[0].pop_back();
-  }
-  Extents correct_image_extents = unique_list_of_extents[0];
-  ldout(cct, 20) << "fixed extent list: " << correct_image_extents << dendl;
 
-  // This bufferlist should hold the data that the user requested which was already
-  // in the cache
-  ceph::bufferlist cached_data;
+    ldout(cct, 20) << "Number of requested chunks to be fetched= "
+      << uncached_chunk_ids.size()
+      << "Number of requested chunks in the cache= "
+      << num_cached_chunks << dendl;
 
-  // Figure out what isn't in the cache!
-  std::vector<ElementID> uncached_chunk_ids;
-  std::vector<Extent> uncached_chunk_extents;
+    // If any of the chunks aren't in the cache, we need to make an asynchronous request
+    // from the cluster
+    if (!uncached_chunk_ids.empty()) {
+      // Create a callback to notify the LRU list/cache the IDs of the chunks we added
+      Context* combined_on_finish = new CacheUpdate<I>(this, uncached_chunk_ids, cct, bl,
+        true, on_finish);
 
-  uint64_t num_cached_chunks = 0;
+      // If we have cached data that we need to copy into the result buffer, make sure
+      // it's added to the callback
+      ceph::bufferlist* copy_src = nullptr;
+      if (num_cached_chunks > 0) {
+        copy_src = &cached_data;
+      }
 
-  for (auto i : correct_image_extents) {
-    ElementID chunk_id = RealCache::extent_to_unique_id(i.first);
-
-    // Add each chunk ID to the prediction work queue
-    prediction_wq->queue(chunk_id);
-
-    // And try to get it from the cache
-    bufferptr cache_chunk_buffer = real_cache.get(chunk_id);
-
-    if (cache_chunk_buffer.length() > 0) {
-      // Cached chunks will get copied into the result buffer later
-      cached_data.push_back(cache_chunk_buffer);
-      num_cached_chunks ++;
+      auto aio_comp = io::AioCompletion::create_and_start(combined_on_finish, &m_image_ctx,
+                                                            io::AIO_TYPE_READ);
+      io::ImageReadRequest<I> req(m_image_ctx, aio_comp, std::move(uncached_chunk_extents),
+                                  io::ReadResult{bl, copy_src}, fadvise_flags, {});
+                                  
+      req.set_bypass_image_cache();
+      req.send();
     } else {
-      // Uncached chunks will have to be requested from the cluster
-      uncached_chunk_ids.push_back(chunk_id);
-      uncached_chunk_extents.push_back(i);
+      ldout(cct, 20) << "All requested chunks are in cache "
+                    << "Performing synchronous copy "
+                    << "Requested extents=" << image_extents << " "
+                    << "cached_data.length=" << cached_data.length() << " "
+                    << "bl.length=" << bl->length() << dendl;
+                
+
+      // Otherwise synchronously copy from our cache chunks to the result buffer
+      uint64_t total_request_size = cached_data.length();
+      
+      // NOTE: This appender isn't actually copying the data - fix it!
+      {
+        auto appender = bl->get_contiguous_appender(total_request_size, true);
+        appender.append(cached_data);
+      }
+
+      ldout(cct, 20) << "bl.length after copying from cache " << bl->length() << dendl;
+
+
+      // NOTE: not sure what parameter this should take
+      // -1 will cause ReadResult to not check the size of the buffer
+      // but also not to invoke destriper - (is this bad?)
+      on_finish->complete(-1);
     }
-  }
+  } else {
+    Extents extents_copy = image_extents;
 
+    ldout(cct, 20) << "uncached request " << ", "
+                   << "extents=" << image_extents << dendl;
 
-  ldout(cct, 20) << "Number of requested chunks to be fetched= "
-		 << uncached_chunk_ids.size()
-		 << "Number of requested chunks in the cache= "
-		 << num_cached_chunks << dendl;
+    auto aio_comp = io::AioCompletion::create_and_start(on_finish, &m_image_ctx,
+                                                            io::AIO_TYPE_READ);
+    io::ImageReadRequest<I> req(m_image_ctx, aio_comp, std::move(extents_copy),
+                                  io::ReadResult{bl}, fadvise_flags, {});  
 
-  // If any of the chunks aren't in the cache, we need to make an asynchronous request
-  // from the cluster
-  if (!uncached_chunk_ids.empty()) {
-    // Create a callback to notify the LRU list/cache the IDs of the chunks we added
-    Context* combined_on_finish = new CacheUpdate<I>(this, uncached_chunk_ids, cct, bl, on_finish);
-
-    // If we have cached data that we need to copy into the result buffer, make sure
-    // it's added to the callback
-    ceph::bufferlist* copy_src = nullptr;
-    if (num_cached_chunks > 0) {
-	    copy_src = &cached_data;
-    }
-
-    auto aio_comp = io::AioCompletion::create_and_start(combined_on_finish, &m_image_ctx,
-                                                          io::AIO_TYPE_READ);
-    io::ImageReadRequest<I> req(m_image_ctx, aio_comp, std::move(uncached_chunk_extents),
-                                io::ReadResult{bl, copy_src}, fadvise_flags, {});
-                                
     req.set_bypass_image_cache();
     req.send();
-  } else {
-    ldout(cct, 20) << "All requested chunks are in cache "
-                   << "Performing synchronous copy "
-                   << "Requested extents=" << image_extents << " "
-                   << "cached_data.length=" << cached_data.length() << " "
-                   << "bl.length=" << bl->length() << dendl;
-              
-
-    // Otherwise synchronously copy from our cache chunks to the result buffer
-    uint64_t total_request_size = cached_data.length();
-    
-    // NOTE: This appender isn't actually copying the data - fix it!
-    {
-      auto appender = bl->get_contiguous_appender(total_request_size, true);
-      appender.append(cached_data);
-    }
-
-    ldout(cct, 20) << "bl.length after copying from cache " << bl->length() << dendl;
-
-
-    // NOTE: not sure what parameter this should take
-    // -1 will cause ReadResult to not check the size of the buffer
-    // but also not to invoke destriper - (is this bad?)
-    on_finish->complete(-1);
   }
+
+  ldout(cct, 20) << "read_count=" << read_count << dendl;
 }
 
 template <typename I>
@@ -226,8 +253,20 @@ void PrefetchImageCache<I>::aio_write(Extents &&image_extents,
                                          int fadvise_flags,
                                          Context *on_finish) {
   CephContext *cct = m_image_ctx.cct;
+
+  // debugging stats
+  write_count++;
+
   ldout(cct, 20) << "image_extents=" << image_extents << ", "
-                 << "on_finish=" << on_finish << dendl;
+                 << "on_finish=" << on_finish << ", "
+                 << "write_count=" << write_count << dendl;
+
+  if (write_count == writes_until_cache) {
+    ldout(cct, 5) << "Starting caching after " << writes_until_cache
+                  << " writes" << dendl;
+    
+    caching = true;
+  }
 
   m_image_writeback.aio_write(std::move(image_extents), std::move(bl),
                               fadvise_flags, on_finish);
@@ -340,7 +379,7 @@ void PrefetchImageCache<I>::flush(Context *on_finish) {
  */
 template <typename I>
 void PrefetchImageCache<I>::aio_cache_returned_data( // const Extents& image_extents,
-  ceph::bufferlist *bl, std::vector<cache::ElementID> chunk_ids) {
+  ceph::bufferlist *bl, std::vector<cache::ElementID> chunk_ids, bool copy_result) {
 
   CephContext *cct = m_image_ctx.cct;
   ldout(cct, 20) << "caching the returned data "
@@ -359,7 +398,7 @@ void PrefetchImageCache<I>::aio_cache_returned_data( // const Extents& image_ext
     uint64_t i = 0;
     for (auto& buffer : bl1.buffers()) {
       // if (in_prefetch_list(chunk_ids[i])) {
-        real_cache.insert(chunk_ids[i], buffer);
+        real_cache->insert(chunk_ids[i], buffer, copy_result);
       // }
       i ++;
     }
@@ -382,15 +421,15 @@ void PrefetchImageCache<I>::update_cache(std::vector<uint64_t> elements) {
 
 template <typename I>
 void PrefetchImageCache<I>::prefetch_chunk(uint64_t id) {
-  bufferlist* cache_storage_location = nullptr;
+  bufferlist* cache_storage = new bufferlist();
 
   Extents extents {std::make_pair((id + 1) * CACHE_CHUNK_SIZE, CACHE_CHUNK_SIZE)};
   Context* on_completion = new CacheUpdate<I>(this, std::vector<uint64_t>{id}, m_image_ctx.cct,
-                                              cache_storage_location);
+                                              cache_storage, true);
   auto aio_comp = io::AioCompletion::create_and_start(on_completion, &m_image_ctx,
                                                         io::AIO_TYPE_READ);
   io::ImageReadRequest<I> req(m_image_ctx, aio_comp, std::move(extents),
-                              io::ReadResult{cache_storage_location}, 0, {});
+                              io::ReadResult{cache_storage}, 0, {});
                               
   req.set_bypass_image_cache();
   req.send();
@@ -399,14 +438,14 @@ void PrefetchImageCache<I>::prefetch_chunk(uint64_t id) {
 
 template <typename T>
 CacheUpdate<T>::CacheUpdate(PrefetchImageCache<T>* cache, const std::vector<uint64_t>& elements,
-    CephContext* cct, ceph::bufferlist* bl, Context* to_run) :
-  cache(cache), elements(elements), cct(cct), bl(bl), to_run(to_run)
+    CephContext* cct, ceph::bufferlist* bl, bool copy_result, Context* to_run) :
+  cache(cache), elements(elements), cct(cct), bl(bl), copy_result(copy_result), to_run(to_run)
 {}
 
 
 template <typename T>
 void CacheUpdate<T>::finish(int r) {
-  cache->aio_cache_returned_data(bl, elements);
+  cache->aio_cache_returned_data(bl, elements, copy_result);
 
   if (to_run) {
     to_run->complete(r);

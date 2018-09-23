@@ -63,7 +63,7 @@ public:
 
   void aio_cache_returned_data( // const Extents& image_extents,
     ceph::bufferlist *bl,
-    std::vector<cache::ElementID> chunk_ids);
+    std::vector<cache::ElementID> chunk_ids, bool copy_result);
   
   
 
@@ -76,7 +76,11 @@ private:
   // Work queue to handle Belief value calculations
   PredictionWorkQueue* prediction_wq;
 
-  RealCache real_cache;
+  RealCache* real_cache;
+
+  uint64_t write_count = 0;
+  uint64_t read_count = 0;
+  bool caching = false;
 
 };
 
@@ -87,7 +91,7 @@ template <typename T>
 class CacheUpdate: public Context {
   public:
     CacheUpdate(PrefetchImageCache<T>* cache, const std::vector<uint64_t>& elements,
-    CephContext* cct, ceph::bufferlist* bl, Context* to_run = nullptr);
+    CephContext* cct, ceph::bufferlist* bl, bool copy_result, Context* to_run = nullptr);
     void finish(int r) override;
 
   private:
@@ -95,6 +99,7 @@ class CacheUpdate: public Context {
     std::vector<uint64_t> elements;
     CephContext* cct;
     ceph::bufferlist* bl;
+    bool copy_result;
     Context* to_run;
 };
 	

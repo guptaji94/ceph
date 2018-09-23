@@ -21,6 +21,8 @@ void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
     // Do some calculations!
     ldout(cct, 20) << "Adding element " << id << " to BeliefCache history" << dendl;
 
+    prefetch(id + 1);
+
     /*for (auto i : prefetch_list) {
         real_cache.prefetch_chunk(i);
     }*/

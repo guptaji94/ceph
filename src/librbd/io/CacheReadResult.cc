@@ -63,7 +63,7 @@ void CacheReadResult::C_ImageCacheReadRequest::finish(int r) {
     if (chunk_ids.size() > 0) {
       ldout(cct, 20) << "updating real cache with chunk_ids=" << chunk_ids << dendl;
       auto imageCache = *(static_cast<librbd::cache::PrefetchImageCache<ImageCtx>*>((aio_completion->ictx->image_cache)));
-      imageCache.aio_cache_returned_data(&bl, chunk_ids);
+      imageCache.aio_cache_returned_data(&bl, chunk_ids, true);
     } else {
       ldout(cct, 20) << "no chunk ids given - not updating real cache " << dendl;
     }
@@ -129,7 +129,7 @@ void CacheReadResult::C_ObjectCacheReadRequest::finish(int r) {
 
   auto imageCache =
     *(static_cast<librbd::cache::PrefetchImageCache<ImageCtx>*>((aio_completion->ictx->image_cache)));
-    imageCache.aio_cache_returned_data(&bl, chunk_ids);
+    imageCache.aio_cache_returned_data(&bl, chunk_ids, true);
 
   aio_completion->complete_request(r);
 }

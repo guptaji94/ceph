@@ -10,17 +10,32 @@
 namespace librbd {
   namespace cache {
     RealCache::RealCache(CephContext *m_cct) :
-      m_cct(m_cct)
+      m_cct(m_cct), lock("RealCache::lock", true, false)
     {
     }
  
-    void RealCache::insert(uint64_t image_extents_addr, bufferptr bl) {
+    void RealCache::insert(uint64_t image_extents_addr, bufferptr bl, bool copy_result) {
   	ldout(m_cct, 20) << "inserting the image extent :: " << image_extents_addr << " bufferlist :: " << bl << " to cache " << dendl;
 
-				bufferptr b_copy(buffer::copy(bl.raw_c_str(), bl.length()));
+				if (copy_result) {
+					ldout(m_cct, 20) << "copying " << bl.length() << " bytes of " << bl
+													 << " to cache" << dendl;
+					bufferptr b_copy(buffer::copy(bl.raw_c_str(), bl.length()));
 
-        updateLRUList(m_cct, image_extents_addr);
-        cache_entries.insert_or_assign(image_extents_addr, b_copy);
+					lock.Lock();
+					updateLRUList(m_cct, image_extents_addr);
+					cache_entries.insert_or_assign(image_extents_addr, b_copy);
+					lock.Unlock();
+				} else {
+					ldout(m_cct, 20) << "storing " << bl.length() << " bytes of " << bl
+													 << " in cache" << dendl;
+
+					lock.Lock();
+					updateLRUList(m_cct, image_extents_addr);
+					cache_entries.insert_or_assign(image_extents_addr, bl);
+					lock.Unlock();
+				}
+				
 	
   	ldout(m_cct, 20) << "cache size after insert :: " << cache_entries.size() << dendl;
     }
