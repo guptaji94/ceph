@@ -1,4 +1,5 @@
 #include "librbd/cache/ext/BeliefCache/src/VirtCache.h"
+#include "include/assert.h"
 
 #include "PredictionWorkQueue.h"
 
@@ -21,7 +22,9 @@ PredictionWorkQueue::PredictionWorkQueue(std::string n, time_t ti,
         lock("PredictionWorkQueue::lock",
             true, false)
 {
-    virt_cache = new beliefcache::VirtCache(std::numeric_limits<uint64_t>::max());
+    ldout(cct, 20) << "Creating VirtCache" << dendl;
+    //virt_cache = new beliefcache::VirtCache(std::numeric_limits<uint64_t>::max());
+    virt_cache = new beliefcache::VirtCache(1048576);
 }
 
 void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
@@ -29,14 +32,23 @@ void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
 
     lock.Lock();
 
+    ldout(cct, 20) << "Updating virtual cache history" << dendl;
     virt_cache->updateHistory(id);
+    
+    ldout(cct, 20) << "Virtual cache history updated" << dendl;
     auto& prefetch_list = virt_cache->getPrefetchList();
 
+    ldout(cct, 20) << prefetch_list.size() << " elements in prefetch list" << dendl;
+
     for (auto i : prefetch_list) {
+        ldout(cct, 20) << "chunk " << i.id << " appears in prefetch list" << dendl;
         prefetch(i.id);
     }
 
     prefetch_list.clear();
+
+    ldout(cct, 20) << "Finished processing BeliefCache job" << dendl;
+    
     lock.Unlock();
 }
 

@@ -31,7 +31,9 @@ PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
   ThreadPool* thread_pool;
   m_image_ctx.get_thread_pool_instance(cct, &thread_pool, &op_work_queue);
 
-  prediction_wq = new PredictionWorkQueue("librdb::predition_work_queue",
+  ldout(m_image_ctx.cct, 20) << "Creating PredictionWorkQueue" << dendl;
+
+  prediction_wq = new PredictionWorkQueue("librdb::prediction_work_queue",
     cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
     thread_pool, std::bind(&PrefetchImageCache::prefetch_chunk, this, std::placeholders::_1), cct);
 }
@@ -190,7 +192,7 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
       // NOTE: not sure what parameter this should take
       // -1 will cause ReadResult to not check the size of the buffer
       // but also not to invoke destriper - (is this bad?)
-      on_finish->complete(-1);
+      on_finish->complete(bl->length());
     }
   } else {
     Extents extents_copy = image_extents;
