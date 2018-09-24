@@ -1,3 +1,5 @@
+#include "librbd/cache/ext/BeliefCache/src/VirtCache.h"
+
 #include "PredictionWorkQueue.h"
 
 #include <limits>
@@ -16,9 +18,10 @@ namespace cache {
 PredictionWorkQueue::PredictionWorkQueue(std::string n, time_t ti,
     ThreadPool* p, std::function<void(uint64_t)> prefetch, CephContext* cct) :
         WorkQueueVal<uint64_t>(n, ti, 0, p), prefetch(prefetch), cct(cct),
-        virt_cache(std::numeric_limits<uint64_t>::max()), lock("PredictionWorkQueue::lock",
+        lock("PredictionWorkQueue::lock",
             true, false)
 {
+    virt_cache = new beliefcache::VirtCache(std::numeric_limits<uint64_t>::max());
 }
 
 void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
@@ -26,8 +29,8 @@ void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
 
     lock.Lock();
 
-    virt_cache.updateHistory(id);
-    auto& prefetch_list = virt_cache.getPrefetchList();
+    virt_cache->updateHistory(id);
+    auto& prefetch_list = virt_cache->getPrefetchList();
 
     for (auto i : prefetch_list) {
         prefetch(i.id);

@@ -1,16 +1,15 @@
 #ifndef CEPH_LIBRBD_PREDICTION_WORK_QUEUE
 #define CEPH_LIBRBD_PREDICTION_WORK_QUEUE
 
-#include "librbd/cache/ext/BeliefCache/src/VirtCache.h"
-
-#undef _ASSERT_H
-#include "include/assert.h"
-
 #include "common/WorkQueue.h"
 
 #include <vector>
 #include <string>
 #include <deque>
+
+namespace beliefcache {
+    class VirtCache;
+}
 
 namespace librbd {
 
@@ -34,7 +33,7 @@ class PredictionWorkQueue: public ThreadPool::WorkQueueVal<uint64_t> {
         CephContext* cct;
         std::function<void(uint64_t)> prefetch;
         
-        beliefcache::VirtCache virt_cache;
+        beliefcache::VirtCache* virt_cache;
         mutable Mutex lock;
 
         bool _empty() override;
