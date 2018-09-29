@@ -25,7 +25,10 @@ PredictionWorkQueue::PredictionWorkQueue(std::string n, time_t ti,
 {
     ldout(cct, 20) << "Creating VirtCache" << dendl;
     //virt_cache = new beliefcache::VirtCache(std::numeric_limits<uint64_t>::max());
-    virt_cache = new beliefcache::VirtCache(VIRTCACHE_SIZE, MAX_UNIQUE_ELEMENTS, cct);
+    beliefcache::CacheParameters params;
+    params.max_matrix_size = MAX_UNIQUE_ELEMENTS;
+
+    virt_cache = new beliefcache::VirtCache(VIRTCACHE_SIZE, params, cct);
 }
 
 uint64_t PredictionWorkQueue::encode_chunk(uint64_t chunk_id) {

@@ -37,10 +37,10 @@ class PredictionWorkQueue: public ThreadPool::WorkQueueVal<uint64_t> {
         beliefcache::VirtCache* virt_cache;
         mutable Mutex lock;
 
-	std::map<uint64_t, uint64_t> unique_chunk_map;
+        std::map<uint64_t, uint64_t> unique_chunk_map;
 
-	uint64_t encode_chunk(uint64_t chunk_id);
-	uint64_t decode_chunk(uint64_t chunk_id);
+        uint64_t encode_chunk(uint64_t chunk_id);
+        uint64_t decode_chunk(uint64_t chunk_id);
 
         bool _empty() override;
         void _enqueue(uint64_t val) override;

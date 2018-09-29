@@ -23,6 +23,7 @@ struct ImageCtx;
 namespace cache {
 
 class PredictionWorkQueue;
+class DetectionModule;
 
 /**
  * Example passthrough client-side, image extent cache
@@ -75,6 +76,9 @@ private:
 
   // Work queue to handle Belief value calculations
   PredictionWorkQueue* prediction_wq;
+
+  // Detection Module work queue
+  DetectionModule* detection_wq;
 
   RealCache* real_cache;
 

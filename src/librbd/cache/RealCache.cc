@@ -1,6 +1,8 @@
 #include "RealCache.h"
+
 #include "common/dout.h"
 #include "include/buffer.h"
+#include "DetectionModule.h"
 
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
@@ -9,13 +11,13 @@
          << " " << __func__ << ": "
 namespace librbd {
   namespace cache {
-    RealCache::RealCache(CephContext *m_cct) :
-      m_cct(m_cct), lock("RealCache::lock", true, false)
+    RealCache::RealCache(DetectionModule* detection_wq, CephContext *m_cct) :
+      detection_wq(detection_wq), m_cct(m_cct), lock("RealCache::lock", true, false)
     {
     }
  
     void RealCache::insert(uint64_t image_extents_addr, bufferptr bl, bool copy_result) {
-  	ldout(m_cct, 20) << "inserting the image extent :: " << image_extents_addr << " bufferlist :: " << bl << " to cache " << dendl;
+  		ldout(m_cct, 20) << "inserting the image extent :: " << image_extents_addr << " bufferlist :: " << bl << " to cache " << dendl;
 
 				if (copy_result) {
 					ldout(m_cct, 20) << "copying " << bl.length() << " bytes of " << bl
@@ -37,13 +39,13 @@ namespace librbd {
 				}
 				
 	
-  	ldout(m_cct, 20) << "cache size after insert :: " << cache_entries.size() << dendl;
+  		ldout(m_cct, 20) << "cache size after insert :: " << cache_entries.size() << dendl;
     }
 
     bufferptr RealCache::get(uint64_t image_extent_addr){
   	ldout(m_cct, 20) << "reading from cache for the image extent :: " << image_extent_addr << dendl;
 
-      	bufferptr bl;
+    bufferptr bl;
   	auto cache_entry = cache_entries.find(image_extent_addr);
   	if(cache_entry == cache_entries.end()){
   		ldout(m_cct, 20) << "No match in cache for :: " << image_extent_addr << dendl;
@@ -53,33 +55,64 @@ namespace librbd {
   		bufferptr bl1 = bl;
   		ldout(m_cct, 20) << "Bufferlist from cache :: " << bl1 << dendl;
   		ldout(m_cct, 20) << "Image Extent :: " << cache_entry->first << " BufferList :: " << bl << dendl;
-        	updateLRUList(m_cct, cache_entry->first);
+      updateLRUList(m_cct, cache_entry->first);
   		return bl;
   	  }
     }
 
 
     ElementID RealCache::extent_to_unique_id(uint64_t extent_offset) {
-	return (extent_offset / CACHE_CHUNK_SIZE) + 1;
+			return (extent_offset / CACHE_CHUNK_SIZE) + 1;
     }
 
     ElementID RealCache::extent_to_unique_id(Extent extent) {
-	return extent_to_unique_id(extent.first);
+			return extent_to_unique_id(extent.first);
     }
 
     Extent RealCache::id_to_extent(ElementID id) {
-	return std::make_pair((id + 1) * CACHE_CHUNK_SIZE, CACHE_CHUNK_SIZE);
+			return std::make_pair((id + 1) * CACHE_CHUNK_SIZE, CACHE_CHUNK_SIZE);
     }
 
 
     void RealCache::updateLRUList(CephContext* m_cct, uint64_t cacheKey){
     	ldout(m_cct, 20) << "inside updateLRUList method" << dendl;
-      	if (lru_list.size() == CACHE_SIZE) {
+				auto result = std::find(lru_list.begin(), lru_list.end(), cacheKey);
+
+				// If the LRU list is full and the element isn't already there...
+      	if (result == lru_list.end() && lru_list.size() == CACHE_SIZE) {
         	uint64_t last = lru_list.back();
+					
+					// Notify the Detection module that we evicted last and added cacheKey to
+					// the cache
+					{
+						DetectionInput input;
+						input.type = DetectionInput::Type::SwapElements;
+						input.value.update.evicted = last;
+						input.value.update.inserted = cacheKey;
+
+						detection_wq->queue(input);
+					}
+
+					// Remove last
         	lru_list.pop_back();
         	cache_entries.erase(last);
+
+					// Insert the new element
+					lru_list.push_front(cacheKey);
       	} else {
-        	lru_list.remove(cacheKey);
+					
+					// We're just moving it to the front if the element is already there
+					if (result != lru_list.end()) {
+        		lru_list.remove(cacheKey);
+					} else {
+						// Notify the detection module if the element is new to the LRU list/cache
+						DetectionInput input;
+						input.type = DetectionInput::Type::InsertElement;
+						input.value.u = cacheKey;
+
+						detection_wq->queue(input);
+					}
+
         	lru_list.push_front(cacheKey);
       	}
       	ldout(m_cct, 20) << "new lru_list order :: " << lru_list << dendl;

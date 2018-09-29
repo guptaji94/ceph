@@ -18,14 +18,15 @@ bin/rbd pool init
 bin/rbd import --export-format 2 StartTesting
 
 # Map rbd image and grab device name
-nbd_device = $(sudo bin/rbd device map -t nbd StartTesting | grep -e "nbd[0-9]")
+nbd_device=$(sudo bin/rbd device map -t nbd StartTesting | grep -e 'nbd[0-9]')
+echo "Mapped image to $nbd_device"
 
 # Mount device and run tests
-sudo mount -osync "/dev/$nbd_device" /mnt/testimage
+sudo mount -osync "$nbd_device" /mnt/testimage
 cd /mnt/testimage/
-dd if=/dev/zero of=zeros.txt obs=1024 count=240
-./testDa
+sudo dd if=/dev/zero of=zeros.txt obs=1024 count=249
+sudo ./testDA
 cd -
 
 # Unmount
-sudo umount /dev/$nbd_device
+sudo umount $nbd_device

@@ -1,7 +1,7 @@
 #ifndef CEPH_LIBRBD_CACHE_PREFETCH_REAL_CACHE
 #define CEPH_LIBRBD_CACHE_PREFETCH_REAL_CACHE
 
-#define CACHE_SIZE 1048576
+#define CACHE_SIZE 5
 #define CACHE_CHUNK_SIZE 1024
 
 #include "common/dout.h"
@@ -11,6 +11,8 @@
 
 namespace librbd{
   namespace cache{
+    class DetectionModule;
+
     using ElementID = uint64_t;
     using Extent = std::pair<uint64_t, uint64_t>;
 
@@ -22,7 +24,7 @@ namespace librbd{
 
     class RealCache{
       public:
-        RealCache(CephContext *m_cct);
+        RealCache(DetectionModule* detection_wq, CephContext *m_cct);
 
         void insert(uint64_t image_extents_addr, bufferptr bl, bool copy_result);
   	bufferptr get(uint64_t image_extent_addr);
@@ -32,6 +34,7 @@ namespace librbd{
 	static Extent id_to_extent(ElementID id);
 
       private:
+        DetectionModule* detection_wq;
         CephContext *m_cct;
         ImageCacheEntries cache_entries;
         LRUList lru_list;

@@ -5,8 +5,10 @@
 #include "include/buffer.h"
 #include "common/dout.h"
 #include "librbd/ImageCtx.h"
-#include "PredictionWorkQueue.h"
 #include "librbd/io/CacheReadResult.h"
+
+#include "PredictionWorkQueue.h"
+#include "DetectionModule.h"
 
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
@@ -23,13 +25,18 @@ template <typename I>
 PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
   : m_image_ctx(image_ctx), m_image_writeback(image_ctx) 
    {
-  real_cache = new RealCache(m_image_ctx.cct);
   CephContext *cct = m_image_ctx.cct;
 
   // Get the thread pool for this context
   ContextWQ* op_work_queue;
   ThreadPool* thread_pool;
   m_image_ctx.get_thread_pool_instance(cct, &thread_pool, &op_work_queue);
+
+  detection_wq = new DetectionModule("librbd::detection_module",
+    cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
+    thread_pool, cct);
+  
+  real_cache = new RealCache(detection_wq, cct);
 
   ldout(m_image_ctx.cct, 20) << "Creating PredictionWorkQueue" << dendl;
 
@@ -42,6 +49,7 @@ template <typename I>
 PrefetchImageCache<I>::~PrefetchImageCache() {
   delete prediction_wq;
   delete real_cache;
+  delete detection_wq;
 }
 
 
@@ -126,6 +134,11 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
       if (do_prefetching) {
         // Add each chunk ID to the prediction work queue
         prediction_wq->queue(chunk_id);
+
+        DetectionInput input;
+        input.type = DetectionInput::Type::AccessStream;
+        input.value.u = chunk_id;
+        detection_wq->queue(input);
       }
 
       // And try to get it from the cache
