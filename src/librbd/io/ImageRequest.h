@@ -141,8 +141,8 @@ protected:
   }
 
 private:
-  int m_op_flags;
   std::vector<uint64_t> chunk_ids;
+  int m_op_flags;
 };
 
 

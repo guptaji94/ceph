@@ -9,6 +9,7 @@
 
 #include "PredictionWorkQueue.h"
 #include "DetectionModule.h"
+#include "SwitchModule.h"
 
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
@@ -35,20 +36,32 @@ PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
   detection_wq = new DetectionModule("librbd::detection_module",
     cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
     thread_pool, cct);
+
+  switch_wq = new SwitchModule("librbd::detection_module",
+    cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
+    thread_pool, cct);
   
   real_cache = new RealCache(detection_wq, cct);
 
   ldout(m_image_ctx.cct, 20) << "Creating PredictionWorkQueue" << dendl;
 
-  prediction_wq = new PredictionWorkQueue("librdb::prediction_work_queue",
+  prediction_wq1 = new PredictionWorkQueue("librdb::prediction_work_queue",
     cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
-    thread_pool, std::bind(&PrefetchImageCache::prefetch_chunk, this, std::placeholders::_1), cct);
+    thread_pool, std::bind(&PrefetchImageCache::prefetch_chunk, this, std::placeholders::_1), true,
+    switch_wq, 0, cct);
+
+  prediction_wq2 = new PredictionWorkQueue("librdb::prediction_work_queue",
+    cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
+    thread_pool, std::bind(&PrefetchImageCache::prefetch_chunk, this, std::placeholders::_1), false,
+    switch_wq, 1, cct);
 }
 
 template <typename I>
 PrefetchImageCache<I>::~PrefetchImageCache() {
-  delete prediction_wq;
+  delete prediction_wq2;
+  delete prediction_wq1;
   delete real_cache;
+  delete switch_wq;
   delete detection_wq;
 }
 
@@ -132,13 +145,11 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
       ElementID chunk_id = RealCache::extent_to_unique_id(i.first);
 
       if (do_prefetching) {
-        // Add each chunk ID to the prediction work queue
-        prediction_wq->queue(chunk_id);
-
-        DetectionInput input;
-        input.type = DetectionInput::Type::AccessStream;
-        input.value.u = chunk_id;
-        detection_wq->queue(input);
+        // Add each chunk ID to the prediction and detection work queues
+        prediction_wq1->queue(chunk_id);
+        prediction_wq2->queue(chunk_id);
+        detection_wq->queue(DetectionInput::AccessStream(chunk_id));
+        switch_wq->queue(SwitchInput::AccessStream(chunk_id));
       }
 
       // And try to get it from the cache

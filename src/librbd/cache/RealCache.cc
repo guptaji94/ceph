@@ -40,15 +40,28 @@ namespace librbd {
 				
 	
   		ldout(m_cct, 20) << "cache size after insert :: " << cache_entries.size() << dendl;
+			ldout(m_cct, 20) << "Cache elements after insert :: " << dendl;
+
+			for (auto i : cache_entries) {
+				ldout(m_cct, 20) << i << dendl;
+			}
     }
 
     bufferptr RealCache::get(uint64_t image_extent_addr){
   	ldout(m_cct, 20) << "reading from cache for the image extent :: " << image_extent_addr << dendl;
 
+		total_requests ++;
+		ldout(m_cct, 20) << "Total requests: " << total_requests << dendl;
+
     bufferptr bl;
   	auto cache_entry = cache_entries.find(image_extent_addr);
   	if(cache_entry == cache_entries.end()){
   		ldout(m_cct, 20) << "No match in cache for :: " << image_extent_addr << dendl;
+
+			misses ++;
+			hit_rate = static_cast<double>(hits) / static_cast<double>(misses);
+			detection_wq->queue(DetectionInput::HitRate(hit_rate));
+
   		return bl;
   	} else {
   		bl = cache_entry->second;
@@ -56,6 +69,11 @@ namespace librbd {
   		ldout(m_cct, 20) << "Bufferlist from cache :: " << bl1 << dendl;
   		ldout(m_cct, 20) << "Image Extent :: " << cache_entry->first << " BufferList :: " << bl << dendl;
       updateLRUList(m_cct, cache_entry->first);
+
+			hits ++;
+			hit_rate = static_cast<double>(hits) / static_cast<double>(misses);
+			detection_wq->queue(DetectionInput::HitRate(hit_rate));
+
   		return bl;
   	  }
     }
@@ -76,12 +94,20 @@ namespace librbd {
 
     void RealCache::updateLRUList(CephContext* m_cct, uint64_t cacheKey){
     	ldout(m_cct, 20) << "inside updateLRUList method" << dendl;
+
 				auto result = std::find(lru_list.begin(), lru_list.end(), cacheKey);
 
 				// If the LRU list is full and the element isn't already there...
       	if (result == lru_list.end() && lru_list.size() == CACHE_SIZE) {
         	uint64_t last = lru_list.back();
-					
+
+					// Remove last
+        	lru_list.pop_back();
+        	cache_entries.erase(last);
+
+					// Insert the new element
+					lru_list.push_front(cacheKey);
+
 					// Notify the Detection module that we evicted last and added cacheKey to
 					// the cache
 					{
@@ -92,13 +118,6 @@ namespace librbd {
 
 						detection_wq->queue(input);
 					}
-
-					// Remove last
-        	lru_list.pop_back();
-        	cache_entries.erase(last);
-
-					// Insert the new element
-					lru_list.push_front(cacheKey);
       	} else {
 					
 					// We're just moving it to the front if the element is already there

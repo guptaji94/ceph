@@ -2,7 +2,7 @@
 #define CEPH_LIBRBD_CACHE_PREFETCH_REAL_CACHE
 
 #define CACHE_SIZE 5
-#define CACHE_CHUNK_SIZE 1024
+#define CACHE_CHUNK_SIZE 1024//131072
 
 #include "common/dout.h"
 #include "include/buffer.h"
@@ -40,6 +40,11 @@ namespace librbd{
         LRUList lru_list;
 
         mutable Mutex lock;
+
+        uint64_t hits = 0;
+        uint64_t misses = 0;
+        uint64_t total_requests = 0;
+        double hit_rate = 0.0;
 
         void updateLRUList(CephContext* m_cct, uint64_t cacheKey);
         void evictCache(CephContext* m_cct, uint64_t cacheKey);

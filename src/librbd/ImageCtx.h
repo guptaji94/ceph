@@ -131,8 +131,6 @@ namespace librbd {
 
     file_layout_t layout;
 
-    cache::ImageCache *image_cache;
-
     Readahead readahead;
     uint64_t total_bytes_read;
 
@@ -210,6 +208,8 @@ namespace librbd {
     journal::Policy *journal_policy = nullptr;
 
     ZTracer::Endpoint trace_endpoint;
+
+    cache::ImageCache *image_cache;
 
     static bool _filter_metadata_confs(const string &prefix, std::map<string, bool> &configs,
                                        const map<string, bufferlist> &pairs, map<string, bufferlist> *res);

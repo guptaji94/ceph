@@ -4,7 +4,7 @@
 #ifndef CEPH_LIBRBD_CACHE_PREFETCH_IMAGE_CACHE
 #define CEPH_LIBRBD_CACHE_PREFETCH_IMAGE_CACHE
 #define HASH_SIZE 1048576
-#define CACHE_CHUNK_SIZE 1024
+#define CACHE_CHUNK_SIZE 1024//131072
 
 #include "ImageCache.h"
 #include "ImageWriteback.h"
@@ -24,6 +24,7 @@ namespace cache {
 
 class PredictionWorkQueue;
 class DetectionModule;
+class SwitchModule;
 
 /**
  * Example passthrough client-side, image extent cache
@@ -75,10 +76,14 @@ private:
   Extents extent_to_chunks(std::pair<uint64_t, uint64_t> image_extents); 
 
   // Work queue to handle Belief value calculations
-  PredictionWorkQueue* prediction_wq;
+  PredictionWorkQueue* prediction_wq1;
+  PredictionWorkQueue* prediction_wq2;
 
   // Detection Module work queue
   DetectionModule* detection_wq;
+
+  // Switch Module work queue
+  SwitchModule* switch_wq;
 
   RealCache* real_cache;
 
