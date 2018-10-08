@@ -129,9 +129,9 @@ set(librbd_internal_srcs
   watcher/Notifier.cc
   watcher/RewatchRequest.cc
   ${CMAKE_SOURCE_DIR}/src/common/ContextCompletion.cc
-  cache/ext/BeliefCache/src/VirtCache.cc
-  cache/ext/BeliefCache/src/VirtStat.cc
-  cache/ext/BeliefCache/src/Globals.cc)
+  cache/ext/VirtCache.cc
+  cache/ext/VirtStat.cc
+  cache/ext/Globals.cc)
 
 add_library(rbd_api STATIC librbd.cc)
 add_library(rbd_internal STATIC

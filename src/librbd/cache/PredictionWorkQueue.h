@@ -8,7 +8,7 @@
 #include <deque>
 #include <map>
 
-namespace beliefcache {
+namespace predictcache {
     class VirtCache;
 }
 
@@ -41,7 +41,7 @@ class PredictionWorkQueue: public ThreadPool::WorkQueueVal<uint64_t> {
         unsigned char cache_id;
         CephContext* cct;
         
-        beliefcache::VirtCache* virt_cache;
+        predictcache::VirtCache* virt_cache;
         mutable Mutex lock;
 
         std::map<uint64_t, uint64_t> unique_chunk_map;

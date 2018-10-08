@@ -1,6 +1,6 @@
 // Include BeliefCache first to avoid boost conflicts
 #define BELIEFCACHE_CEPH
-#include "librbd/cache/ext/BeliefCache/src/VirtCache.h"
+#include "librbd/cache/ext/VirtCache.h"
 
 #include "include/assert.h"
 #include "PredictionWorkQueue.h"
@@ -27,11 +27,11 @@ PredictionWorkQueue::PredictionWorkQueue(std::string n, time_t ti,
             true, false)
 {
     ldout(cct, 20) << "Creating VirtCache" << dendl;
-    //virt_cache = new beliefcache::VirtCache(std::numeric_limits<uint64_t>::max());
-    beliefcache::CacheParameters params;
+    //virt_cache = new predictcache::VirtCache(std::numeric_limits<uint64_t>::max());
+    predictcache::CacheParameters params;
     params.max_matrix_size = MAX_UNIQUE_ELEMENTS;
 
-    virt_cache = new beliefcache::VirtCache(VIRTCACHE_SIZE, params, cct);
+    virt_cache = new predictcache::VirtCache(VIRTCACHE_SIZE, params, cct);
 }
 
 uint64_t PredictionWorkQueue::encode_chunk(uint64_t chunk_id) {
@@ -51,7 +51,7 @@ uint64_t PredictionWorkQueue::decode_chunk(uint64_t chunk_id) {
 }
 
 void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
-    ldout(cct, 20) << "Adding element " << id << " to BeliefCache history" << dendl;
+    ldout(cct, 20) << "Adding element " << id << " to VirtCache history" << dendl;
 
     lock.Lock();
 
@@ -85,7 +85,7 @@ void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
 
     prefetch_list.clear();
 
-    ldout(cct, 20) << "Finished processing BeliefCache job" << dendl;
+    ldout(cct, 20) << "Finished processing VirtCache job" << dendl;
 
     access_count++;
     ldout(cct, 20) << "Total requests: " << access_count << dendl;
