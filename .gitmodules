@@ -55,7 +55,3 @@
 [submodule "src/seastar"]
 	path = src/seastar
 	url = https://github.com/ceph/seastar.git
-[submodule "src/librbd/cache/ext/BeliefCache"]
-	path = src/librbd/cache/ext/BeliefCache
-	url = https://github.com/rotywonka/BeliefCache.git
-	branch = ceph-integration
