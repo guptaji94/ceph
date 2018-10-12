@@ -27,13 +27,13 @@ sudo mount -osync "$nbd_device" /mnt/testimage
 cd /mnt/testimage/
 logfile=$(ls -t out/client* | head -1)
 echo "Active logfile: $logfile"
-tail -f logfile | grep -a "write_count" &
-tail -f logfile | grep -a "Total accesses" &
-sudo dd if=/dev/zero of=zeros.txt obs=1024 count=250
-sudo ./testDA
-cd -
+# tail -f logfile | grep -a "write_count" &
+# tail -f logfile | grep -a "Total accesses" &
+# sudo dd if=/dev/zero of=zeros.txt obs=1024 count=250
+# sudo ./testDA
+# cd -
 
 # Unmount
-sudo umount $nbd_device
+# sudo umount $nbd_device
 
-wait
+# wait

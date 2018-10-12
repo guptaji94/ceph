@@ -29,6 +29,7 @@ PredictionWorkQueue::PredictionWorkQueue(std::string n, time_t ti,
     ldout(cct, 20) << "Creating VirtCache" << dendl;
     //virt_cache = new predictcache::VirtCache(std::numeric_limits<uint64_t>::max());
     predictcache::CacheParameters params;
+    params.vcache_size = 5;
     params.max_matrix_size = MAX_UNIQUE_ELEMENTS;
 
     virt_cache = new predictcache::VirtCache(VIRTCACHE_SIZE, params, cct);
@@ -47,7 +48,17 @@ uint64_t PredictionWorkQueue::encode_chunk(uint64_t chunk_id) {
 }
 
 uint64_t PredictionWorkQueue::decode_chunk(uint64_t chunk_id) {
-    return unique_chunk_map[chunk_id];
+    auto found = std::find_if(unique_chunk_map.begin(), unique_chunk_map.end(),
+	[=](auto x){ return x.second == chunk_id; });
+
+    if (found != unique_chunk_map.end()) {
+	return found->second;
+    }
+
+    ldout(cct, 20) << "Error - no chunk mapped to unique ID "
+		   << chunk_id << dendl;
+
+    return 0;
 }
 
 void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
@@ -75,6 +86,8 @@ void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
         }
     }
 
+    prefetch_list.clear();
+
     auto& evict_list = virt_cache->getEvictionList();
     ldout(cct, 20) << evict_list.size() << " elements in eviction list" << dendl;
 
@@ -83,7 +96,7 @@ void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
         switch_module->queue(SwitchInput::EvictElement(cache_id, decoded_id));
     }
 
-    prefetch_list.clear();
+    evict_list.clear();
 
     ldout(cct, 20) << "Finished processing VirtCache job" << dendl;
 

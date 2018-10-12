@@ -94,7 +94,8 @@ namespace librbd {
                         usageStats_[i].hitrate = static_cast<double>(usageStats_[i].hits) /
                             static_cast<double>(totalAccessCount_);
 
-                        ldout(cct_, 20) << "Hitrate for virtual cache " << static_cast<double>(i)
+                        ldout(cct_, 20) << "Hitrate for virtual cache "
+					<< static_cast<unsigned int>(i)
                                         << ": " << usageStats_[i].hitrate << dendl;
                         lock.Unlock();
                     }
@@ -121,7 +122,8 @@ namespace librbd {
                     uint64_t insertId = input.value.u;
 
                     ldout(cct_, 20) << "Inserting " << insertId << " into cache "
-                                    << input.cacheId << " elements" << dendl;
+                                    << static_cast<unsigned int>(input.cacheId)
+				    << " elements" << dendl;
 
                     lock.Lock();
                     usageStats_[input.cacheId].currentElements.push_back(insertId);
@@ -131,6 +133,30 @@ namespace librbd {
 
                     break;
                 }
+
+		case SwitchInput::Type::EvictElement:
+		{
+		    uint64_t evictId = input.value.u;
+
+		    ldout(cct_, 20) << "Evicting " << evictId << " from cache "
+				    << static_cast<unsigned int>(input.cacheId) 
+				    << " elements" << dendl;
+
+		    lock.Lock();
+		    auto& elements = usageStats_[input.cacheId].currentElements;
+
+		    // Remove evicted ID
+		    auto found = std::find(elements.begin(), elements.end(), evictId);
+		    if (found != elements.end()) {
+			elements.erase(found);
+		    }
+
+		    lock.Unlock();
+
+		    updateFrequency(input.cacheId);
+
+		    break;
+		}
 
                 // Update local copy of cache elements
                 case SwitchInput::Type::SwapElements:

@@ -14,7 +14,7 @@
 #ifdef PREDICTCACHE_CEPH
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
-#define dout_prefix *_dout << "BeliefCache::VirtStat: " << this << " " \
+#define dout_prefix *_dout << "PredictCache::VirtStat: " << this << " " \
                            <<  __func__ << ": "
 #define put_msg(z) (ldout(cct_, 20) << z << dendl)
 #else
