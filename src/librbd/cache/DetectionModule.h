@@ -12,48 +12,22 @@ namespace librbd {
     namespace cache {
         /**
          * DetectionInput is used for any input that will be fed to the DetectionModule.
-         * The enumerator Type is used to tell what kind of data is provided, and the Value
-         * is a union which can either hold an unsigned integer, or a double, based on what
-         * the type is. This allows for the input to remain small, as required for the
-         * WorkQueueVal base class.
+         * It holds both the hitrate at the time the element appeared in the stream, and the
+         * ID of the element in the access stream.
          */
         struct DetectionInput {
-            struct CacheUpdate {
-                uint64_t evicted;
-                uint64_t inserted;
-            };
+            double hitrate;
+            uint64_t elementId;
 
-            enum class Type {
-                HitRate,
-                UsageRatio,
-                AccessStream,
-                SwapElements,
-                InsertElement
-            };
-
-            union Value {
-                double d;
-                uint64_t u;
-                CacheUpdate update;
-            };
-
-            Type type;
-            Value value;
-
-            // Helper factory methods
-            static DetectionInput HitRate(double hitrate);
-            static DetectionInput UsageRatio(double usageratio);
-            static DetectionInput AccessStream(uint64_t elementId);
-            static DetectionInput SwapElements(uint64_t evictId, uint64_t insertId);
-            static DetectionInput InsertElement(uint64_t insertId);
+            DetectionInput(double hitrate, uint64_t elementId) :
+                hitrate(hitrate), elementId(elementId)
+            {};
         };
 
         /**
-         * DetectionModule is an object that takes certain inputs given by
-         * a virtual cache, such as HitRate, UsageRation, etc. and determines
-         * if the virtual cache is performing adequately. If it is not, the
-         * detection module will replace the active virtual cache with another,
-         * and notify a retraining module.
+         * DetectionModule is an object that takes the access stream and the hitrate at the correct
+         * tick, and determines if there has been a phase shift in the workload. It then notifies
+         * the SwitchModule to begin retraining. 
          */
         class DetectionModule: public ThreadPool::WorkQueueVal<DetectionInput> {
             public:
@@ -74,21 +48,17 @@ namespace librbd {
                 // Last time an element appeared in the access stream, by access stream index
                 std::map<uint64_t, uint64_t> lastAccess_;
 
-                // Elements currently in the real cache
-                std::vector<uint64_t> currentElements_;
 
                 // Stats
                 uint64_t totalAccessCount_ = 0;
                 double frequency_ = 0.0;
                 double recency_ = 0.0;
                 double hitrate_ = 0.0;
+                double frequencyWeight_ = 0.5;
                 double recencyWeight_ = 0.5;
 
-                // Updates the hitrate of the real cache
-                void updateHitrate();
-
-                // Updates the frequency of the current cache elements
-                void updateFrequency();
+                // Updates the frequency using the most recent element
+                void updateFrequency(uint64_t recentElementId);
 
                 // Updates the recency using the most recent element
                 void updateRecency(uint64_t recentElementId);

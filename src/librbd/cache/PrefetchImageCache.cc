@@ -148,7 +148,6 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
         // Add each chunk ID to the prediction and detection work queues
         prediction_wq1->queue(chunk_id);
         prediction_wq2->queue(chunk_id);
-        detection_wq->queue(DetectionInput::AccessStream(chunk_id));
         switch_wq->queue(SwitchInput::AccessStream(chunk_id));
       }
 

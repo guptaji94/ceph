@@ -59,8 +59,6 @@ namespace librbd {
   		ldout(m_cct, 20) << "No match in cache for :: " << image_extent_addr << dendl;
 
 			misses ++;
-			hit_rate = static_cast<double>(hits) / static_cast<double>(misses);
-			detection_wq->queue(DetectionInput::HitRate(hit_rate));
 
   		return bl;
   	} else {
@@ -71,11 +69,12 @@ namespace librbd {
       updateLRUList(m_cct, cache_entry->first);
 
 			hits ++;
-			hit_rate = static_cast<double>(hits) / static_cast<double>(misses);
-			detection_wq->queue(DetectionInput::HitRate(hit_rate));
 
   		return bl;
   	  }
+
+		hit_rate = static_cast<double>(hits) / static_cast<double>(total_requests);
+		detection_wq->queue(DetectionInput(image_extent_addr, hit_rate));
     }
 
 
@@ -107,29 +106,11 @@ namespace librbd {
 
 					// Insert the new element
 					lru_list.push_front(cacheKey);
-
-					// Notify the Detection module that we evicted last and added cacheKey to
-					// the cache
-					{
-						DetectionInput input;
-						input.type = DetectionInput::Type::SwapElements;
-						input.value.update.evicted = last;
-						input.value.update.inserted = cacheKey;
-
-						detection_wq->queue(input);
-					}
       	} else {
 					
 					// We're just moving it to the front if the element is already there
 					if (result != lru_list.end()) {
-        		lru_list.remove(cacheKey);
-					} else {
-						// Notify the detection module if the element is new to the LRU list/cache
-						DetectionInput input;
-						input.type = DetectionInput::Type::InsertElement;
-						input.value.u = cacheKey;
-
-						detection_wq->queue(input);
+        				lru_list.remove(cacheKey);
 					}
 
         	lru_list.push_front(cacheKey);
