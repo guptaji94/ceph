@@ -131,7 +131,10 @@ set(librbd_internal_srcs
   ${CMAKE_SOURCE_DIR}/src/common/ContextCompletion.cc
   cache/ext/VirtCache.cc
   cache/ext/VirtStat.cc
-  cache/ext/Globals.cc)
+  cache/ext/Globals.cc
+  cache/ext/adwin/C++/Adwin.cpp
+  cache/ext/adwin/C++/List.cpp
+  cache/ext/adwin/C++/ListNode.cpp)
 
 add_library(rbd_api STATIC librbd.cc)
 add_library(rbd_internal STATIC

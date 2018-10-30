@@ -1,5 +1,5 @@
-// Include BeliefCache first to avoid boost conflicts
-#define BELIEFCACHE_CEPH
+// Include PredictCache first to avoid boost conflicts
+#define PREDICTCACHE_CEPH
 #include "librbd/cache/ext/VirtCache.h"
 
 #include "include/assert.h"

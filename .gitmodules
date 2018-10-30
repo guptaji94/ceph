@@ -55,3 +55,6 @@
 [submodule "src/seastar"]
 	path = src/seastar
 	url = https://github.com/ceph/seastar.git
+[submodule "src/librbd/cache/ext/adwin"]
+	path = src/librbd/cache/ext/adwin
+	url = https://github.com/abifet/adwin.git

@@ -13,10 +13,15 @@
 
 namespace librbd {
     namespace cache {
-        DetectionModule::DetectionModule(std::string n, time_t ti, ThreadPool* p, CephContext* cct) :
+        DetectionModule::DetectionModule(std::string n, time_t ti, ThreadPool* p, CephContext* cct,
+            uint64_t ticksPerCycle, uint64_t detectionBuckets) :
             WorkQueueVal<DetectionInput>(n, ti, 0, p),
             lock("DetectionModule::lock", true, false),
-            cct_(cct)
+            cct_(cct),
+            ticksPerCycle_(ticksPerCycle),
+            frequencyDetect_(detectionBuckets),
+            recencyDetect_(detectionBuckets),
+            hitrateDetect_(detectionBuckets)
         {
             ldout(cct_, 20) << "Creating detection module " << dendl;
         }
@@ -34,7 +39,9 @@ namespace librbd {
 
             lock.Unlock();
 
-            // Determine if the cache is performing adequately here
+            if (totalAccessCount_ % ticksPerCycle_ == 0) {
+                checkPhase();
+            }
         }
 
         void DetectionModule::updateFrequency(uint64_t recentElementId) {
@@ -68,6 +75,16 @@ namespace librbd {
                 + (1 - recencyWeight_) * recency_;
 
             ldout(cct_, 20) << "Recency: " << recency_ << dendl;
+        }
+
+        void DetectionModule::checkPhase() {
+            bool frequencyShift = frequencyDetect_.update(frequency_);
+            bool recencyShift = recencyDetect_.update(recency_);
+            bool hitrateShift = hitrateDetect_.update(recency_);
+
+            // if (frequencyShift && recencyShift && hitrateShift) {
+                // notify shift module
+            // }
         }
 
         bool DetectionModule::_empty() {

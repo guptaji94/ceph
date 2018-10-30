@@ -8,6 +8,9 @@
 // Ceph includes
 #include "common/WorkQueue.h"
 
+// ext includes
+#include "librbd/cache/ext/adwin/C++/Adwin.h"
+
 namespace librbd {
     namespace cache {
         /**
@@ -32,7 +35,7 @@ namespace librbd {
         class DetectionModule: public ThreadPool::WorkQueueVal<DetectionInput> {
             public:
                 DetectionModule(std::string n, time_t ti, ThreadPool* p,
-                    CephContext* cct);
+                    CephContext* cct, uint64_t ticksPerCycle = 100, uint64_t detectionBuckets = 50);
 
             protected:
                 void _process(DetectionInput input, ThreadPool::TPHandle &) override;
@@ -57,11 +60,21 @@ namespace librbd {
                 double frequencyWeight_ = 0.5;
                 double recencyWeight_ = 0.5;
 
+
+                // Adwin
+                uint64_t ticksPerCycle_;
+                Adwin frequencyDetect_;
+                Adwin recencyDetect_;
+                Adwin hitrateDetect_;
+
                 // Updates the frequency using the most recent element
                 void updateFrequency(uint64_t recentElementId);
 
                 // Updates the recency using the most recent element
                 void updateRecency(uint64_t recentElementId);
+
+                // Checks if a phase shift has occurred using Adwin
+                void checkPhase();
 
                 // Functions for ceph::WorkQueueVal
                 bool _empty() override;
