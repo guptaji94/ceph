@@ -26,7 +26,7 @@ class PredictionWorkQueue: public ThreadPool::WorkQueueVal<uint64_t> {
     public:
         PredictionWorkQueue(std::string n, time_t ti, ThreadPool* p,
             std::function<void(uint64_t)> prefetch, bool advising,
-            SwitchModule* switch_module, unsigned char cache_id,
+            unsigned char cache_id,
             CephContext* cct);
 
     protected:
@@ -37,7 +37,6 @@ class PredictionWorkQueue: public ThreadPool::WorkQueueVal<uint64_t> {
 
         std::function<void(uint64_t)> prefetch;
         bool advising;
-        SwitchModule* switch_module;
         unsigned char cache_id;
         CephContext* cct;
         

@@ -24,7 +24,6 @@ namespace cache {
 
 class PredictionWorkQueue;
 class DetectionModule;
-class SwitchModule;
 
 /**
  * Example passthrough client-side, image extent cache
@@ -81,9 +80,6 @@ private:
 
   // Detection Module work queue
   DetectionModule* detection_wq;
-
-  // Switch Module work queue
-  SwitchModule* switch_wq;
 
   RealCache* real_cache;
 

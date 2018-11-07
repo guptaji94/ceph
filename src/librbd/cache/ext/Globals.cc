@@ -2,6 +2,7 @@
 
 namespace predictcache {
     CacheParameters vcacheGlobals;
+    AdaptationParameters adaptationGlobals;
 }
 
 namespace Globals {

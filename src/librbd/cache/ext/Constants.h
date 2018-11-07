@@ -4,7 +4,7 @@
 #include <cstdint>
 // Class handling default values for different parameters
 
-class Constants{
+struct Constants {
 
   const uint64_t RCACHE_SIZE = 655360;
   const uint64_t VCACHE_SIZE = 1000;

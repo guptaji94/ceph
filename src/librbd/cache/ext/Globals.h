@@ -4,12 +4,15 @@
 #include <unordered_map>
 #include <string>
 #include <queue>
+#include <vector>
 #include <cstdint>
 using namespace std;
 
 namespace predictcache {
 	struct CacheParameters {
 		uint64_t vcache_size = 1000;
+		uint64_t lru_size = 5;
+		uint64_t rcache_size = 655360;
 		uint64_t cc_size = 10;
 		double thresh = 0.12;
 		uint64_t voter_size = 5;
@@ -18,13 +21,19 @@ namespace predictcache {
 		uint64_t minimum_history_to_consider = 2;
 	};
 
+	struct AdaptationParameters {
+		uint64_t cycle_ticks = 100;
+		uint64_t cycles_per_test = 50;
+	};
+
 	extern CacheParameters vcacheGlobals;
+	extern AdaptationParameters adaptationGlobals;
 }
 
 namespace Globals {
 
 //double HIT_TIME = 0.0002;
-        extern double MISS_TIME;
+    extern double MISS_TIME;
 
 // Globals (do not modify)
 	extern double ARRIVAL_TIME;
@@ -54,6 +63,7 @@ namespace Globals {
 	 extern uint64_t CACHE_FLAG;
 	extern uint64_t CC_FLAG;
 
+    
 	extern uint64_t REAL_HIT_RATE;
 	extern uint64_t REAL_USED_RATIO;
 	extern uint64_t REAL_INSERTION_COUNT;

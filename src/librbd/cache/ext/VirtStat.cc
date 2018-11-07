@@ -10,23 +10,11 @@
 // Project includes
 #include "Globals.h"
 
-// Provide optional debug messages via Ceph
-#ifdef PREDICTCACHE_CEPH
-#define dout_subsys ceph_subsys_rbd
-#undef dout_prefix
-#define dout_prefix *_dout << "PredictCache::VirtStat: " << this << " " \
-                           <<  __func__ << ": "
-#define put_msg(z) (ldout(cct_, 20) << z << dendl)
-#else
-#define put_msg(z)
-#endif
-
 using namespace boost::numeric::ublas;
 
 namespace predictcache {
 	//void VirtStat::get_main_key(const uint64_t key, uint64_t &id);
 
-  #ifndef PREDICTCACHE_CEPH
   VirtStat::VirtStat() :
     params_(vcacheGlobals),
     accessStats_(params_.max_matrix_size, params_.max_matrix_size),
@@ -35,29 +23,12 @@ namespace predictcache {
   {
     // Construct VirtStat with two max_elem x max_elem sparse matrices
   }
-  #else
-  VirtStat::VirtStat(CacheParameters params, CephContext* cct) :
-    params_(params),
-    accessStats_(params.max_matrix_size, params.max_matrix_size),
-    probabilities_(params.max_matrix_size, params.max_matrix_size),
-    columnSums_(params.max_matrix_size, 0), rowSums_(params.max_matrix_size, 0),
-    cct_(cct)
-  {
-    ldout(cct_, 20) <<"Loading VirtStat matrices of size " << params_.max_matrix_size << dendl;
-  }
-  #endif
 
   std::vector<Element> VirtStat::updateHistory(ObjectID obj, std::vector<Element>& cacheElements)
   {
-    // If we don't have any other elements in the history, don't do anything!
-    #ifdef PREDICTCACHE_CEPH
-    ldout(cct_,20) <<"Adding " << obj << " to virtual stat history"<< dendl;
-    #endif    
+    // If we don't have any other elements in the history, don't do anything! 
     if (history_.empty()) {
-      history_.push_back(obj);
-      #ifdef PREDICTCACHE_CEPH
-      ldout(cct_,20) <<"No items in virtual stat history"<< dendl;
-      #endif      
+      history_.push_back(obj);     
       return std::vector<Element>();
     }
 
@@ -73,19 +44,12 @@ namespace predictcache {
     // Append to history
     history_.push_back(obj);
 
-    #ifdef PREDICTCACHE_CEPH
-    ldout(cct_,20) <<obj << " inserted into virtual stat history"<< dendl;
-    #endif
     for (auto i = history_.begin() + windowStart; i != history_.end() - 1; i++) {
       updateCounts(*i, obj);
     }
 
     // Find belief values for element in the window n
-    // n, obj
-    #ifdef PREDICTCACHE_CEPH
-    ldout(cct_,20) << "Calculating significance values for the range " << windowStart 
-		   << ", " << (history_.size() - 1) << dendl;
-    #endif    
+    // n, obj  
 
     uint64_t votersStart;
 
@@ -114,9 +78,6 @@ namespace predictcache {
 
   // Increments the access counts for next after obj
   void VirtStat::updateCounts(ObjectID obj, ObjectID next) {
-    #ifdef PREDICTCACHE_CEPH
-    ldout(cct_,20) <<"Inserting element " << obj << ", " << next << " to access matrix"<< dendl;
-    #endif
     accessStats_(obj, next) += 1;
     rowSums_[obj] += 1;
     columnSums_[next] += 1;
@@ -134,10 +95,6 @@ namespace predictcache {
     if (rowSum > (params_.minimum_history_to_consider * params_.window_size)) {
       for (auto i = objRow.begin(); i != objRow.end(); i++) {
         if (*i != 0) {
-          #ifdef PREDICTCACHE_CEPH
-          ldout(cct_,20) <<"Calculating probability for " << start << ", " << i.index() << dendl;
-          #endif
-
           uint64_t col = i.index();
           double oFrequency = static_cast<double>(columnSums_[start]);
           double xFrequency = static_cast<double>(columnSums_[col]);
@@ -178,10 +135,7 @@ namespace predictcache {
     matrix_row<SparseMatrix<double>> objProbabilities(probabilities_, obj);
 
     std::vector<Element> result;
-
-    #ifdef PREDICTCACHE_CEPH
-    ldout(cct_,20) <<"Finding cache candidates for item " << obj<< dendl;
-    #endif    
+  
     for (auto i = objProbabilities.begin(); i != objProbabilities.end(); i++) {
       // Skip elements with a probability of 0
       if (*i == 0.0) {
@@ -203,10 +157,6 @@ namespace predictcache {
       cacheCandidates.erase(cacheCandidates.begin() + numCandidates, cacheCandidates.end());
     }
 
-    #ifdef PREDICTCACHE_CEPH
-    ldout(cct_,20) <<"Found " << cacheCandidates.size() << " cache candidates for element "
-      << obj << dendl;
-    #endif
     // Insert as Element
     for (auto i : cacheCandidates) {
       result.emplace_back(i.first, i.second);
@@ -216,13 +166,14 @@ namespace predictcache {
     return result;
   }
 
+  void VirtStat::setParameters(CacheParameters params) {
+    params_ = params;
+  }
+
   void VirtStat::findMaxBelief(std::vector<Element>& candidates,
     std::vector<ObjectID>::iterator votersStart,
     std::vector<ObjectID>::iterator votersEnd, double threshold)
   {
-    #ifdef PREDICTCACHE_CEPH
-    ldout(cct_,20) <<"Calculating maximal belief values from voters"<< dendl;
-    #endif
     for (auto i = candidates.begin(); i != candidates.end(); ) {
       // Find the max belief for each candidate by traversing the list of voters
       for (auto j = votersStart; j != votersEnd; j++) {

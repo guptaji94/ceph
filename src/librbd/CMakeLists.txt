@@ -36,7 +36,6 @@ set(librbd_internal_srcs
   cache/PrefetchImageCache.cc
   cache/PredictionWorkQueue.cc
   cache/RealCache.cc
-  cache/SwitchModule.cc
   deep_copy/ImageCopyRequest.cc
   deep_copy/MetadataCopyRequest.cc
   deep_copy/ObjectCopyRequest.cc

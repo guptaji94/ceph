@@ -5,7 +5,6 @@
 #include "include/assert.h"
 #include "PredictionWorkQueue.h"
 #include "PrefetchImageCache.h"
-#include "SwitchModule.h"
 
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
@@ -20,9 +19,9 @@ namespace cache {
 
 PredictionWorkQueue::PredictionWorkQueue(std::string n, time_t ti,
     ThreadPool* p, std::function<void(uint64_t)> prefetch, bool advising,
-    SwitchModule* switch_module, unsigned char cache_id, CephContext* cct) :
+    unsigned char cache_id, CephContext* cct) :
         WorkQueueVal<uint64_t>(n, ti, 0, p), prefetch(prefetch), advising(advising),
-        switch_module(switch_module), cache_id(cache_id), cct(cct),
+        cache_id(cache_id), cct(cct),
         lock("PredictionWorkQueue::lock",
             true, false)
 {
@@ -32,7 +31,7 @@ PredictionWorkQueue::PredictionWorkQueue(std::string n, time_t ti,
     params.vcache_size = 5;
     params.max_matrix_size = MAX_UNIQUE_ELEMENTS;
 
-    virt_cache = new predictcache::VirtCache(VIRTCACHE_SIZE, params, cct);
+    virt_cache = new predictcache::VirtCache(params);
 }
 
 uint64_t PredictionWorkQueue::encode_chunk(uint64_t chunk_id) {
@@ -78,8 +77,6 @@ void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
 	    uint64_t decoded_id = decode_chunk(i.id);
         ldout(cct, 20) << "chunk " << decoded_id << " appears in prefetch list" << dendl;
 
-        switch_module->queue(SwitchInput::InsertElement(cache_id, decoded_id));
-
         if (advising) {
             ldout(cct, 20) << "Advising real cache to prefetch " << decoded_id << dendl;
             prefetch(decoded_id);
@@ -90,11 +87,6 @@ void PredictionWorkQueue::_process(uint64_t id, ThreadPool::TPHandle &) {
 
     auto& evict_list = virt_cache->getEvictionList();
     ldout(cct, 20) << evict_list.size() << " elements in eviction list" << dendl;
-
-    for (auto i : evict_list){
-        uint64_t decoded_id = decode_chunk(i);
-        switch_module->queue(SwitchInput::EvictElement(cache_id, decoded_id));
-    }
 
     evict_list.clear();
 

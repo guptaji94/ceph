@@ -9,7 +9,6 @@
 
 #include "PredictionWorkQueue.h"
 #include "DetectionModule.h"
-#include "SwitchModule.h"
 
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
@@ -36,10 +35,6 @@ PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
   detection_wq = new DetectionModule("librbd::detection_module",
     cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
     thread_pool, cct);
-
-  switch_wq = new SwitchModule("librbd::detection_module",
-    cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
-    thread_pool, cct);
   
   real_cache = new RealCache(detection_wq, cct);
 
@@ -48,12 +43,12 @@ PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
   prediction_wq1 = new PredictionWorkQueue("librdb::prediction_work_queue",
     cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
     thread_pool, std::bind(&PrefetchImageCache::prefetch_chunk, this, std::placeholders::_1), true,
-    switch_wq, 0, cct);
+    0, cct);
 
   prediction_wq2 = new PredictionWorkQueue("librdb::prediction_work_queue",
     cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
     thread_pool, std::bind(&PrefetchImageCache::prefetch_chunk, this, std::placeholders::_1), false,
-    switch_wq, 1, cct);
+    1, cct);
 }
 
 template <typename I>
@@ -61,7 +56,6 @@ PrefetchImageCache<I>::~PrefetchImageCache() {
   delete prediction_wq2;
   delete prediction_wq1;
   delete real_cache;
-  delete switch_wq;
   delete detection_wq;
 }
 
@@ -148,7 +142,6 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
         // Add each chunk ID to the prediction and detection work queues
         prediction_wq1->queue(chunk_id);
         prediction_wq2->queue(chunk_id);
-        switch_wq->queue(SwitchInput::AccessStream(chunk_id));
       }
 
       // And try to get it from the cache
@@ -203,7 +196,8 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
       // Otherwise synchronously copy from our cache chunks to the result buffer
       uint64_t total_request_size = cached_data->length();
       
-      // NOTE: This appender isn't actually copying the data - fix it!
+      // ---NOTE: This appender isn't actually copying the data - fix it!
+      // (Forgot to remove this comment?)
       {
         auto appender = bl->get_contiguous_appender(total_request_size, true);
         appender.append(*cached_data);
