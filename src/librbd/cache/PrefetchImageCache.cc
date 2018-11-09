@@ -31,30 +31,25 @@ PrefetchImageCache<I>::PrefetchImageCache(ImageCtx &image_ctx)
   ContextWQ* op_work_queue;
   ThreadPool* thread_pool;
   m_image_ctx.get_thread_pool_instance(cct, &thread_pool, &op_work_queue);
-
-  detection_wq = new DetectionModule("librbd::detection_module",
-    cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
-    thread_pool, cct);
   
   real_cache = new RealCache(detection_wq, cct);
 
   ldout(m_image_ctx.cct, 20) << "Creating PredictionWorkQueue" << dendl;
 
-  prediction_wq1 = new PredictionWorkQueue("librdb::prediction_work_queue",
+  prediction_wq = new PredictionWorkQueue("librdb::prediction_work_queue",
     cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
-    thread_pool, std::bind(&PrefetchImageCache::prefetch_chunk, this, std::placeholders::_1), true,
-    0, cct);
+    thread_pool, std::bind(&PrefetchImageCache::prefetch_chunk, this, std::placeholders::_1), cct);
 
-  prediction_wq2 = new PredictionWorkQueue("librdb::prediction_work_queue",
+  detection_wq = new DetectionModule("librbd::detection_module",
     cct->_conf->get_val<int64_t>("rbd_op_thread_timeout"),
-    thread_pool, std::bind(&PrefetchImageCache::prefetch_chunk, this, std::placeholders::_1), false,
-    1, cct);
+    thread_pool,
+    [&](){ prediction_wq->queue(PredictionInput::PhaseChange()); },
+    cct);
 }
 
 template <typename I>
 PrefetchImageCache<I>::~PrefetchImageCache() {
-  delete prediction_wq2;
-  delete prediction_wq1;
+  delete prediction_wq;
   delete real_cache;
   delete detection_wq;
 }
@@ -139,9 +134,10 @@ void PrefetchImageCache<I>::aio_read(Extents &&image_extents, bufferlist *bl,
       ElementID chunk_id = RealCache::extent_to_unique_id(i.first);
 
       if (do_prefetching) {
-        // Add each chunk ID to the prediction and detection work queues
-        prediction_wq1->queue(chunk_id);
-        prediction_wq2->queue(chunk_id);
+        // Add each chunk ID to the prediction work queues
+        prediction_wq->queue(PredictionInput(chunk_id));
+
+        // Detection work queue will be triggered via the RealCache
       }
 
       // And try to get it from the cache

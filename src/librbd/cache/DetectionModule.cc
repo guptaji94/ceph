@@ -13,9 +13,11 @@
 
 namespace librbd {
     namespace cache {
-        DetectionModule::DetectionModule(std::string n, time_t ti, ThreadPool* p, CephContext* cct,
-            uint64_t ticksPerCycle, uint64_t detectionBuckets) :
+        DetectionModule::DetectionModule(std::string n, time_t ti, ThreadPool* p,
+            std::function<void()> detectionCallback, CephContext* cct, uint64_t ticksPerCycle,
+            uint64_t detectionBuckets) :
             WorkQueueVal<DetectionInput>(n, ti, 0, p),
+            detectionCallback_(detectionCallback),
             lock("DetectionModule::lock", true, false),
             cct_(cct),
             ticksPerCycle_(ticksPerCycle),
@@ -82,9 +84,9 @@ namespace librbd {
             bool recencyShift = recencyDetect_.update(recency_);
             bool hitrateShift = hitrateDetect_.update(recency_);
 
-            // if (frequencyShift && recencyShift && hitrateShift) {
-                // notify shift module
-            // }
+            if (frequencyShift && recencyShift && hitrateShift) {
+                detectionCallback_();
+            }
         }
 
         bool DetectionModule::_empty() {

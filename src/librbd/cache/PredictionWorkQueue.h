@@ -10,37 +10,52 @@
 
 namespace predictcache {
     class VirtCache;
+    class SwitchModule;
 }
 
 namespace librbd {
 
 namespace cache {
 
-class SwitchModule;
+struct PredictionInput {
+    uint64_t elementId;
+    bool phaseChangeDetected;
+
+    PredictionInput(uint64_t elementId) :
+        elementId(elementId), phaseChangeDetected(false)
+    {}
+
+    static PredictionInput PhaseChange() {
+        PredictionInput input(0);
+        input.phaseChangeDetected = true;
+
+        return input;
+    }
+};
 
     // A prediction work queue processes elements as jobs, and updates the
     // virtual cache asynchronously. When the BeliefCache calculations
     // are done, it notifies the real cache of advised prefetch elements
     // via the prefetch() callback function
-class PredictionWorkQueue: public ThreadPool::WorkQueueVal<uint64_t> {
+class PredictionWorkQueue: public ThreadPool::WorkQueueVal<PredictionInput> {
     public:
         PredictionWorkQueue(std::string n, time_t ti, ThreadPool* p,
-            std::function<void(uint64_t)> prefetch, bool advising,
-            unsigned char cache_id,
+            std::function<void(uint64_t)> prefetch,
             CephContext* cct);
 
     protected:
-        void _process(uint64_t id, ThreadPool::TPHandle &) override;
+        void _process(PredictionInput job, ThreadPool::TPHandle &) override;
 
     private:
-        std::deque<uint64_t> jobs;
+        std::deque<PredictionInput> jobs;
 
         std::function<void(uint64_t)> prefetch;
-        bool advising;
-        unsigned char cache_id;
         CephContext* cct;
         
         predictcache::VirtCache* virt_cache;
+        predictcache::VirtCache* virt_cache_secondary;
+        predictcache::SwitchModule* switch_module;
+
         mutable Mutex lock;
 
         std::map<uint64_t, uint64_t> unique_chunk_map;
@@ -50,9 +65,9 @@ class PredictionWorkQueue: public ThreadPool::WorkQueueVal<uint64_t> {
         uint64_t decode_chunk(uint64_t chunk_id);
 
         bool _empty() override;
-        void _enqueue(uint64_t val) override;
-        void _enqueue_front(uint64_t val) override;
-        uint64_t _dequeue() override;
+        void _enqueue(PredictionInput val) override;
+        void _enqueue_front(PredictionInput val) override;
+        PredictionInput _dequeue() override;
 
         
 };

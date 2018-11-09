@@ -75,8 +75,7 @@ private:
   Extents extent_to_chunks(std::pair<uint64_t, uint64_t> image_extents); 
 
   // Work queue to handle Belief value calculations
-  PredictionWorkQueue* prediction_wq1;
-  PredictionWorkQueue* prediction_wq2;
+  PredictionWorkQueue* prediction_wq;
 
   // Detection Module work queue
   DetectionModule* detection_wq;
@@ -86,7 +85,6 @@ private:
   uint64_t write_count = 0;
   uint64_t read_count = 0;
   bool caching = false;
-
 };
 
 // CacheUpdate is a callback function (otherwise known as a Context in Ceph)

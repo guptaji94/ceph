@@ -35,13 +35,16 @@ namespace librbd {
         class DetectionModule: public ThreadPool::WorkQueueVal<DetectionInput> {
             public:
                 DetectionModule(std::string n, time_t ti, ThreadPool* p,
-                    CephContext* cct, uint64_t ticksPerCycle = 100, uint64_t detectionBuckets = 50);
+                    std::function<void()> detectionCallback, CephContext* cct,
+                    uint64_t ticksPerCycle = 100, uint64_t detectionBuckets = 50);
 
             protected:
                 void _process(DetectionInput input, ThreadPool::TPHandle &) override;
 
             private:
                 std::deque<DetectionInput> jobs_;
+                std::function<void()> detectionCallback_;
+
                 mutable Mutex lock;
                 CephContext* cct_;
 
